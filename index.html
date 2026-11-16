@@ -397,6 +397,7 @@ async function saveGHBook(){
 async function pollPhone(){if(!GH)return;let changed=false;
   try{const sc=await ghRaw("app_payload.json");if(sc&&sc.as_of&&sc.top&&(!LIVE||sc.generated_at!==LIVE.generated_at)){LIVE=sc;applyScan();changed=true;}
     const q=await ghRaw("quotes.json");if(q&&q.prices&&(!QUOTES||q.ts!==QUOTES.ts)){QUOTES=q;applyQuotes();changed=true;}
+    const bt=await ghRaw("backtest_month.json").catch(()=>null);if(bt&&(!BT.res||bt.generated_at!==BT.res.generated_at)){BT.res=bt;BT.loaded=true;changed=true;}
     const an=await ghRaw("analyzed.json");if(an){const items=Object.values(an);if(JSON.stringify(items.map(x=>x.analyzed_at))!==JSON.stringify(ANA.items.map(x=>x.analyzed_at))){ANA.items=items;ANA.loaded=true;changed=true;}}
     if(!ghWriting){const bk=await ghBook();if(bk&&bk.rev>B.rev){B=migrate(JSON.parse(bk.json));try{localStorage.setItem(KEY,JSON.stringify(B));}catch(e){}applyScan();applyQuotes();changed=true;}}
     const lt=QUOTES&&QUOTES.ts?QUOTES.ts.replace("T"," ").slice(0,16):null;setSync("Phone · synced with your laptop"+(lt?" · prices "+lt:""));scanNote="";}
@@ -586,6 +587,34 @@ function waChooser(){if(!WA.show)return "";const c=WA.cfg||{},rs=c.recipients||[
    <button type="button" data-wa-close="1">Close</button></div>
    ${!c.phone?'<p class="soft" style="margin:8px 0 0">Add your own number and the people you send to in Setup.</p>':""}
    <p role="status" aria-live="polite" style="margin:8px 0 0">${esc(WA.msg)}</p></section>`;}
+const BT={res:null,running:false,loaded:false,tab:"in_or_close"};
+async function loadBT(){if(!LOCAL)return;const r=await fetch("/api/backtest").then(x=>x.json()).catch(()=>null);
+  if(r){const was=BT.running;BT.res=r.result;BT.running=r.running;BT.loaded=true;if(page()==="perf"&&!typing())render();
+    if(BT.running)setTimeout(loadBT,15000);else if(was){flash={cls:"good",msg:"Month replay finished."};render();}}}
+function btSection(){
+  if(LOCAL&&!BT.loaded)loadBT();
+  const R=BT.res,inr0=v=>"₹"+Math.round(v).toLocaleString("en-IN"),sg=v=>`<span class="${v>0?"pos":v<0?"neg":""}">${v>0?"+":v<0?"−":""}${inr0(Math.abs(v))}</span>`;
+  const pcs=v=>v==null?"–":`<span class="${v>0?"pos":v<0?"neg":""}">${v>0?"+":""}${Number(v).toFixed(2)}%</span>`;
+  let h=`<section class="card"><h2>Last month replay (your rules)</h2>`;
+  const btn=LOCAL?`<button type="button" id="btRun" ${BT.running?"disabled":""}>${BT.running?"Replaying… (3 to 6 minutes)":(R?"↻ Run again":"▶ Run the replay")}</button>`:"";
+  if(!R) return h+`<p>Replays the last month day by day: each day's list, your buys at the next open (free cash ÷ 3 per stock), every lot sold at +3%, parts 2 and 3 at the stock's gap. ${LOCAL?"Takes 3 to 6 minutes (downloads prices).":"It is made on the laptop and shows here after it syncs."}</p>${btn}</section>`;
+  const r=R[BT.tab]||R.in_or_close, tb=(k,l)=>`<button type="button" class="${BT.tab===k?"primary":""}" data-bt="${k}">${l}</button>`;
+  h+=`<p class="soft" style="margin:0 0 8px">${esc(r.from)} to ${esc(r.to)} · ${r.sessions} trading days · starting capital ${inr0(r.capital)} · made ${esc((R.generated_at||"").replace("T"," ").slice(0,16))}</p>
+   <div class="row" style="gap:6px;margin-bottom:10px">${tb("in_zone_only","Bought only “In buy zone”")}${tb("in_or_close","Bought “In” or “Close to” buy zone")}</div>
+   <div class="tiles">
+    <div class="tile"><div class="k">Value at the end</div><div class="v num">${inr0(r.end_value)}</div><div>${pcs(r.return_pct)} on ${inr0(r.capital)}</div></div>
+    <div class="tile"><div class="k">Profit booked (lots sold)</div><div class="v num">${sg(r.realized)}</div><div class="soft">${r.lots_sold} lots sold at +3%</div></div>
+    <div class="tile"><div class="k">Still open (at last close)</div><div class="v num">${sg(r.unrealized)}</div><div class="soft">${r.open_lots.length} lots · ${inr0(r.money_in_open_lots)} invested</div></div>
+    <div class="tile"><div class="k">Nifty 50, same days</div><div class="v num">${pcs(r.nifty_pct)}</div><div class="soft">Worst dip of your value ${pcs(r.max_drawdown_pct)}</div></div></div>
+   <p class="soft" style="margin:8px 0">${r.stocks_bought} stocks bought, ${r.parts_bought} parts in total. Free cash at the end ${inr0(r.cash_end)}.</p>`;
+  if(r.open_lots.length) h+=`<details open><summary>Lots still open (${r.open_lots.length})</summary><div class="scroll"><table><thead><tr><th>Stock</th><th>Bought</th><th class="r">Buy</th><th class="r">Qty</th><th class="r">Last close</th><th class="r">Sells at</th><th class="r">Now</th></tr></thead><tbody>
+    ${r.open_lots.map(l=>`<tr><td><strong>${esc(l.symbol)}</strong></td><td>${esc(l.bought)}</td><td class="r">${l.buy.toFixed(2)}</td><td class="r">${l.qty}</td><td class="r">${l.close!=null?l.close.toFixed(2):"–"}</td><td class="r">${l.target.toFixed(2)}</td><td class="r">${sg(l.unreal)}</td></tr>`).join("")}</tbody></table></div></details>`;
+  if(r.closed.length) h+=`<details><summary>Lots sold (${r.closed.length})</summary><div class="scroll"><table><thead><tr><th>Stock</th><th>Bought</th><th>Sold</th><th class="r">Buy</th><th class="r">Sell</th><th class="r">Qty</th><th class="r">Net after charges</th></tr></thead><tbody>
+    ${r.closed.map(c=>`<tr><td><strong>${esc(c.symbol)}</strong></td><td>${esc(c.bought)}</td><td>${esc(c.sold)}</td><td class="r">${c.buy.toFixed(2)}</td><td class="r">${c.sell.toFixed(2)}</td><td class="r">${c.qty}</td><td class="r">${sg(c.net)}</td></tr>`).join("")}</tbody></table></div></details>`;
+  h+=`<details><summary>Day by day</summary><div class="scroll"><table><thead><tr><th>Date</th><th>What happened</th></tr></thead><tbody>
+    ${r.curve.map(c=>{const ev=r.events.filter(e=>e.date===c.date);return `<tr><td>${esc(c.date)}<br><span class="soft num">${inr0(c.equity)}</span></td><td>${ev.length?ev.map(e=>`${e.type==="BUY"?"🟢 Buy":e.type==="SELL"?"💰 Sell":"⚪"} <strong>${esc(e.symbol)}</strong>${e.qty?` ${e.qty} @ ${e.price.toFixed(2)}`:""} <span class="soft">${esc(e.note||"")}</span>`).join("<br>"):'<span class="soft">no trades</span>'}</td></tr>`;}).join("")}</tbody></table></div></details>
+   <p class="soft" style="font-size:13px;margin-top:8px">${esc(R.note||"")}</p>${btn}</section>`;
+  return h;}
 const ANA={items:[],ready:true,busy:"",err:"",scanning:false,loaded:false};
 async function loadAnalyzed(){if(!LOCAL)return;const d=await fetch("/api/analyzed").then(r=>r.json()).catch(()=>null);
   if(d){ANA.items=d.items||[];ANA.ready=d.ready;ANA.scanning=d.scanning;ANA.loaded=true;if(page()==="analyze"&&!typing())render();}}
@@ -719,11 +748,12 @@ top20(){
   return h;
 },
 perf(){
+  const bt=btSection();
   const d=cur(),days=Object.keys(d.perf_days||{}).sort().reverse(),weeks=Object.keys(d.perf_weeks||{}).sort().reverse();
-  if(!days.length) return `<section class="card"><h2>Performance</h2><p>Daily and weekly tables start with the next scan (weekdays at 6 PM). From then on every listed stock is followed until it becomes invalid.</p></section>`;
+  if(!days.length) return bt+`<section class="card"><h2>Performance</h2><p>Daily and weekly tables start with the next scan (weekdays at 6 PM). From then on every listed stock is followed until it becomes invalid.</p></section>`;
   const view=PERF.view, near=PERF.near;
   const chip=(k,v,l)=>`<button type="button" class="${PERF[k]===v?"primary":""}" data-perf="${k}" data-val="${esc(String(v))}">${esc(l)}</button>`;
-  let h=`<section><h2>How the listed stocks performed</h2><div class="row" style="gap:6px;margin-bottom:8px">${chip("view","day","Daily")}${chip("view","week","Weekly")}
+  let h=bt+`<section><h2>How the listed stocks performed</h2><div class="row" style="gap:6px;margin-bottom:8px">${chip("view","day","Daily")}${chip("view","week","Weekly")}
     <button type="button" class="${near?"primary":""}" data-perf="near" data-val="${near?"":"1"}">${near?"✓ ":""}Near entry zone only</button></div>`;
   const keep=r=>!near||["GREEN","YELLOW"].includes(r.added_colour);
   const pc2=v=>v==null?"–":`<span class="${v>0?"pos":v<0?"neg":""}">${v>0?"+":""}${Number(v).toFixed(2)}%</span>`;
@@ -957,6 +987,8 @@ main.addEventListener("click",async e=>{
     ANA.items=ANA.items.filter(x=>x.symbol!==sym);flash={cls:"",msg:sym+" removed from your Analyze list."};render();return;}
   if(t.id==="anaScan"){await fetch("/api/scan/run",{method:"POST"}).catch(()=>{});ANA.scanning=true;render();
     const iv=setInterval(async()=>{await loadAnalyzed();if(!ANA.scanning){clearInterval(iv);flash={cls:"good",msg:"Scan finished. You can analyse stocks now."};location.reload();}},20000);return;}
+  if(t.dataset&&t.dataset.bt){BT.tab=t.dataset.bt;render();return;}
+  if(t.id==="btRun"){await fetch("/api/backtest/run",{method:"POST"}).catch(()=>{});BT.running=true;render();setTimeout(loadBT,15000);return;}
   if(t.id==="clSave"||t.id==="clPub"||t.id==="clSync"){const out=$("#clOut");
     if(t.id==="clSave"){const r=await fetch("/api/cloud",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({owner:$("#clOwner").value,token:$("#clTok").value,data_repo:$("#clData").value,app_repo:$("#clApp").value})}).then(x=>x.json()).catch(()=>({ok:false,error:"The app is not responding."}));
       out.textContent=r.ok?"Saved. Now press Publish phone app.":r.error;if(r.ok)$("#clTok").value="";return;}
