@@ -1,0 +1,1147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Stock Trader AI</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+/* Layout idea: a dark trading terminal. Live tape on top, summary tiles, then one card per stock with a price ladder. */
+:root{
+  --bg:#060a13; --bg2:#0b1222; --card:#0f1830; --card2:#15213d; --line:#243458; --ink:#eaf0ff; --soft:#9fb0d0;
+  --accent:#22d3ee; --accent2:#a78bfa; --accent-ink:#031018;
+  --good:#34d399; --bad:#fb7185; --warn:#fbbf24; --blue:#60a5fa; --pink:#f472b6;
+  --good-bg:rgba(52,211,153,.13); --bad-bg:rgba(251,113,133,.13); --warn-bg:rgba(251,191,36,.12); --blue-bg:rgba(96,165,250,.13);
+  --display:"IBM Plex Sans Condensed","Arial Narrow",system-ui,sans-serif;
+  --body:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:radial-gradient(1200px 500px at 85% -10%,rgba(167,139,250,.18),transparent 60%),radial-gradient(900px 420px at -10% 0%,rgba(34,211,238,.14),transparent 55%),var(--bg);
+  color:var(--ink);font:16px/1.5 var(--body);min-height:100%}
+a{color:var(--accent)}
+:focus-visible{outline:3px solid var(--warn);outline-offset:2px}
+.wrap{max-width:760px;margin:0 auto;padding:16px}
+@media (min-width:1000px){.wrap{max-width:1200px}}
+html{background:var(--bg)}body{min-height:100vh}
+header.top{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 12px;margin-bottom:10px}
+h1{font:600 26px/1.15 var(--display);margin:0;letter-spacing:.3px;background:linear-gradient(90deg,var(--accent),var(--accent2) 60%,var(--pink));-webkit-background-clip:text;background-clip:text;color:transparent}
+h2{font:600 19px/1.25 var(--display);margin:0 0 10px;text-wrap:balance;letter-spacing:.2px}
+h3{font:600 15px/1.3 var(--body);margin:0 0 6px}
+#sync{font-size:13px;color:var(--soft);margin-left:auto}
+#deskTools button{min-height:40px;padding:6px 12px;font-size:14px}
+nav{display:flex;gap:6px;overflow-x:auto;padding-bottom:10px;margin-bottom:8px;border-bottom:1px solid var(--line)}
+nav a{flex:none;padding:10px 14px;border-radius:999px;text-decoration:none;color:var(--soft);font-weight:600;border:1px solid var(--line);min-height:44px;display:flex;align-items:center;background:var(--bg2)}
+nav a[aria-current="page"]{color:var(--accent-ink);background:linear-gradient(90deg,var(--accent),var(--accent2));border-color:transparent}
+.tape{display:flex;gap:8px;overflow-x:auto;padding:2px 0 10px;margin-bottom:6px}
+.chip{flex:none;display:flex;flex-direction:column;gap:1px;padding:7px 11px;border-radius:10px;background:var(--card);border:1px solid var(--line);min-width:110px}
+.chip b{font:600 13px var(--body);letter-spacing:.3px}
+.chip .num{font-size:14px}
+.stack{display:flex;flex-direction:column;gap:14px}
+.card{background:linear-gradient(180deg,var(--card2),var(--card));border:1px solid var(--line);border-radius:14px;padding:14px;box-shadow:0 6px 24px rgba(0,0,0,.25)}
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
+.tile{background:var(--card);border:1px solid var(--line);border-top:3px solid var(--accent);border-radius:12px;padding:10px 12px}
+.tile.g{border-top-color:var(--good)}.tile.r{border-top-color:var(--bad)}.tile.v{border-top-color:var(--accent2)}.tile.y{border-top-color:var(--warn)}
+.tile .k{font-size:12.5px;color:var(--soft);text-transform:uppercase;letter-spacing:.5px}
+.tile .v{font:500 19px/1.3 var(--mono);font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+.num{font-family:var(--mono);font-variant-numeric:tabular-nums}
+.big{font:600 26px/1.1 var(--mono);font-variant-numeric:tabular-nums}
+.pos{color:var(--good)}.neg{color:var(--bad)}.soft{color:var(--soft)}.amb{color:var(--warn)}
+.note{border-left:4px solid var(--warn);background:var(--warn-bg);padding:10px 12px;border-radius:8px;margin:0}
+.note.bad{border-color:var(--bad);background:var(--bad-bg)}
+.note.good{border-color:var(--good);background:var(--good-bg)}
+.note.info{border-color:var(--blue);background:var(--blue-bg)}
+.pill{display:inline-block;font:600 12.5px/1 var(--body);padding:5px 9px;border-radius:999px;border:1px solid currentColor;white-space:nowrap}
+.pill.open{color:var(--blue);background:var(--blue-bg)}.pill.hit{color:var(--good);background:var(--good-bg)}.pill.sub{color:var(--warn);background:var(--warn-bg)}.pill.closed{color:var(--bad);background:var(--bad-bg)}
+.score{display:inline-flex;align-items:center;justify-content:center;min-width:52px;padding:6px 8px;border-radius:10px;font:600 16px var(--mono);color:var(--accent-ink)}
+.lot{border-top:1px solid var(--line);padding:10px 0;display:flex;flex-direction:column;gap:6px}
+.lot .head{display:flex;flex-wrap:wrap;gap:6px 10px;align-items:center}
+.lot dl{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:4px 12px;margin:0}
+.lot dt{font-size:12.5px;color:var(--soft)}.lot dd{margin:0;font-family:var(--mono);font-variant-numeric:tabular-nums}
+.row{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end}
+label{display:flex;flex-direction:column;gap:4px;font-size:14px;color:var(--soft);flex:1 1 130px}
+input,select,textarea{font:16px var(--body);color:var(--ink);background:var(--bg2);border:1px solid var(--line);border-radius:10px;padding:10px;min-height:44px;width:100%}
+textarea{font:13px var(--mono);min-height:110px}
+button{font:600 15px var(--body);min-height:44px;padding:10px 14px;border-radius:10px;border:1px solid var(--line);background:var(--card2);color:var(--ink);cursor:pointer}
+button.primary{background:linear-gradient(90deg,var(--accent),var(--accent2));color:var(--accent-ink);border-color:transparent}
+button.danger{color:var(--bad);border-color:var(--bad)}
+button:disabled{opacity:.5;cursor:not-allowed}
+ul.plain{margin:0;padding-left:18px}
+details summary{cursor:pointer;color:var(--accent);font-weight:600;min-height:32px}
+.checks{display:flex;flex-direction:column;gap:6px;margin:8px 0}
+.checks label{flex-direction:row;align-items:flex-start;gap:10px;color:var(--ink);font-size:15px;flex:none}
+.checks input{width:22px;min-height:22px;height:22px;flex:none;margin-top:2px}
+.scroll{overflow-x:auto}
+table{border-collapse:collapse;width:100%;font-size:14px}
+th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);white-space:nowrap}
+th{color:var(--soft);font-weight:600}td.r,th.r{text-align:right}
+td.r{font-family:var(--mono);font-variant-numeric:tabular-nums}
+.eg{border-style:dashed}
+/* price ladder */
+.bar{position:relative;height:16px;margin:14px 6px 6px;border-radius:8px;background:linear-gradient(90deg,rgba(251,113,133,.35),rgba(251,191,36,.3) 45%,rgba(52,211,153,.35))}
+.bar i{position:absolute;top:50%;width:12px;height:12px;border-radius:50%;transform:translate(-50%,-50%);border:2px solid var(--bg)}
+.bar i.b{background:var(--blue)}.bar i.t{background:var(--good)}.bar i.e{background:var(--warn);border-radius:2px;transform:translate(-50%,-50%) rotate(45deg)}
+.bar i.n{width:4px;height:28px;border-radius:2px;background:#fff;border:0;box-shadow:0 0 10px rgba(255,255,255,.8)}
+.ladder{list-style:none;margin:8px 0 0;padding:0;display:flex;flex-direction:column;gap:4px}
+.ladder li{display:flex;justify-content:space-between;gap:10px;padding:6px 10px;border-radius:8px;background:var(--bg2);border-left:4px solid var(--line);font-size:14px}
+.ladder li.t{border-left-color:var(--good)}.ladder li.b{border-left-color:var(--blue)}.ladder li.e{border-left-color:var(--warn)}
+.ladder li.n{border-left-color:#fff;background:rgba(255,255,255,.08);font-weight:600}
+.ladder .num{white-space:nowrap}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+.wrap{padding-bottom:96px}
+.fab{position:fixed;right:max(16px,env(safe-area-inset-right));bottom:max(16px,env(safe-area-inset-bottom));width:60px;height:60px;border-radius:50%;padding:0;border:0;
+  display:flex;align-items:center;justify-content:center;color:var(--accent-ink);background:linear-gradient(135deg,var(--accent),var(--accent2) 60%,var(--pink));box-shadow:0 10px 30px rgba(34,211,238,.35);z-index:20}
+.chat{position:fixed;right:max(12px,env(safe-area-inset-right));bottom:max(86px,calc(env(safe-area-inset-bottom) + 86px));width:min(420px,calc(100vw - 24px));height:min(640px,calc(100% - 110px));
+  display:flex;flex-direction:column;background:linear-gradient(180deg,var(--card2),var(--bg2));border:1px solid var(--line);border-radius:16px;box-shadow:0 20px 50px rgba(0,0,0,.55);z-index:21;overflow:hidden}
+.chat[hidden]{display:none}
+.chat-h{display:flex;align-items:center;gap:8px;padding:10px 12px;border-bottom:1px solid var(--line);background:rgba(34,211,238,.06)}
+.chat-h button{margin-left:auto;min-height:40px;min-width:40px;padding:6px 10px}
+.chat-log{flex:1;overflow-y:auto;padding:12px;display:flex;flex-direction:column;gap:8px}
+.msg{max-width:88%;padding:9px 12px;border-radius:14px;font-size:15px;line-height:1.45}
+.msg.bot{align-self:flex-start;background:var(--card);border:1px solid var(--line);border-bottom-left-radius:4px}
+.msg.me{align-self:flex-end;background:linear-gradient(135deg,rgba(34,211,238,.22),rgba(167,139,250,.22));border:1px solid #3b4f7a;border-bottom-right-radius:4px}
+.msg ul{margin:4px 0 0;padding-left:18px}
+.chat-chips{display:flex;flex-wrap:wrap;gap:6px;padding:8px 12px;border-top:1px solid var(--line);max-height:130px;overflow-y:auto}
+.chat-chips button{min-height:38px;padding:6px 12px;border-radius:999px;font-size:14px;background:var(--bg2);border:1px solid #34496f;color:var(--ink)}
+.chat-chips button.go{background:linear-gradient(90deg,var(--accent),var(--accent2));color:var(--accent-ink);border-color:transparent}
+.chat-f{display:flex;gap:8px;padding:10px 12px;border-top:1px solid var(--line)}
+.chat-f input{flex:1}
+@media (prefers-reduced-motion:no-preference){.card{transition:border-color .2s}.card:hover{border-color:#34496f}}
+.filters{padding:12px 14px}.fgroup{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:4px 0}
+.flabel{font-size:13px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--soft,#9aa4b2);min-width:78px}
+.fchip{border-radius:999px;padding:6px 12px;min-height:36px}.fchip.on{background:var(--accent);color:#06121f;border-color:var(--accent);font-weight:700}
+.fchip .cnt{display:inline-block;min-width:20px;padding:0 6px;border-radius:999px;background:rgba(255,255,255,.12);font-size:12px;margin-left:2px}
+.fchip.on .cnt{background:rgba(0,0,0,.18)}
+a.btn{display:inline-flex;align-items:center;padding:8px 14px;border:1px solid var(--line,#334);border-radius:10px;color:inherit;text-decoration:none;min-height:36px}
+a.btn:hover,a.btn:focus-visible{border-color:var(--accent)}
+.cmp{display:flex;flex-wrap:wrap;align-items:center;gap:6px 8px;margin:0 0 8px;padding:8px 10px;border-radius:10px;background:rgba(56,189,248,.08);border:1px solid rgba(56,189,248,.25)}
+.cmpL{font-size:12px;font-weight:800;letter-spacing:.06em;color:var(--accent)}
+.cmp .num{font-size:18px}
+.levels{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:6px 14px;margin-top:8px;padding-top:8px;border-top:1px dashed var(--line,#334)}
+.levels dt{font-size:12px;color:var(--soft,#9aa4b2)}.levels dd{margin:0;font-variant-numeric:tabular-nums}
+.verdict{margin-top:6px;padding:8px 10px;border-radius:10px;border:1px solid currentColor;background:rgba(255,255,255,.04)}
+.verdict.soft{color:inherit;border-color:var(--line,#334)}
+.faq{padding:0}.faq>summary{padding:14px 16px;font-weight:700;cursor:pointer;list-style-position:inside}
+.faq>summary:focus-visible{outline:2px solid var(--accent);outline-offset:-2px;border-radius:12px}
+.faq .faqA{padding:0 16px 14px}.faq .faqA p{margin:8px 0}.faqH{margin:18px 0 8px;font-size:15px;letter-spacing:.04em;text-transform:uppercase;color:var(--accent)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top"><h1>Stock Trader AI</h1><span id="sync" role="status" aria-live="polite">Loading your book…</span>
+  <span id="deskTools" hidden><button type="button" id="refreshBtn">↻ Refresh prices</button> <button type="button" id="notifBtn" hidden>Turn on Windows alerts</button></span></header>
+  <div id="alertBar" role="alert"></div>
+  <nav aria-label="Sections" id="nav"></nav>
+  <div class="tape" id="tape" aria-label="Your stocks today"></div>
+  <main id="main" class="stack" tabindex="-1"></main>
+</div>
+<button id="fab" class="fab" aria-label="Open Sto-Bot" aria-expanded="false" aria-controls="chat">
+  <svg viewBox="0 0 24 24" width="28" height="28" aria-hidden="true"><path fill="currentColor" d="M4 4h16a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H9l-5 4v-4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2zm3 6.5a1.5 1.5 0 1 0 0 .01zm5 0a1.5 1.5 0 1 0 0 .01zm5 0a1.5 1.5 0 1 0 0 .01z"/></svg>
+</button>
+<section id="chat" class="chat" role="dialog" aria-label="Sto-Bot" hidden>
+  <div class="chat-h"><strong>🤖 Sto-Bot</strong><span class="soft" style="font-size:12.5px">no Claude usage</span><button id="chatX" aria-label="Close Sto-Bot">✕</button></div>
+  <div id="log" class="chat-log" role="log" aria-live="polite"></div>
+  <div id="chips" class="chat-chips"></div>
+  <form id="chatF" class="chat-f"><label for="chatIn" class="sr">Message</label><input id="chatIn" autocomplete="off" placeholder="e.g. bought MRPL 300 at 178.5"><button class="primary" aria-label="Send">Send</button></form>
+</section>
+<script>
+/*CORE-START  (pure logic, no DOM: the same rules as the server build) */
+const DEFAULTS={capital:150000,tranche:50000,maxTranches:3,targetPct:3,stepPct:3,reservePct:0,maxPositions:10,maxLots:30,
+  maxDrawdownPct:15,riskExitPct:10,brokeragePct:0.3,brokerageCap:20,dpCharge:12.5,slippageBps:5};
+const RATES={stt:0.1,exch:0.00297,sebi:0.0001,ipft:0.0001,stamp:0.015,gst:18};
+const r2=x=>Math.round((x+Number.EPSILON)*100)/100;
+function newBook(){return{v:4,parts:{},steps:{},rev:0,settings:{...DEFAULTS},cash:DEFAULTS.capital,realized:0,charges:0,peak:DEFAULTS.capital,
+  nextId:1,lots:[],tx:[],prices:{},blocked:{}};}
+function legCharges(side,price,qty,s){
+  const value=price*qty; if(value<=0) return{total:0,brokerage:0,stt:0,exch:0,sebi:0,ipft:0,stamp:0,gst:0,dp:0};
+  const brokerage=Math.min(value*s.brokeragePct/100,s.brokerageCap), exch=value*RATES.exch/100,
+    sebi=value*RATES.sebi/100, ipft=value*RATES.ipft/100, gst=(brokerage+exch+sebi+ipft)*RATES.gst/100,
+    stt=value*RATES.stt/100, stamp=side==="BUY"?value*RATES.stamp/100:0, dp=side==="SELL"?s.dpCharge*1.18:0;
+  return{brokerage,stt,exch,sebi,ipft,stamp,gst,dp,total:r2(brokerage+stt+exch+sebi+ipft+stamp+gst+dp)};
+}
+function roundTrip(buy,sell,qty,s){
+  const b=legCharges("BUY",buy,qty,s), x=legCharges("SELL",sell,qty,s), slip=r2((buy+sell)*qty*s.slippageBps/10000);
+  const gross=r2((sell-buy)*qty), invested=buy*qty, net=r2(gross-b.total-x.total-slip);
+  return{qty,invested:r2(invested),gross,buyCharges:b.total,sellCharges:x.total,slippage:slip,costs:r2(b.total+x.total+slip),
+    net,grossPct:r2(100*gross/invested),netPct:r2(100*net/invested)};
+}
+const active=B=>B.lots.filter(l=>l.status!=="CLOSED");
+const lotsOf=(B,sym)=>active(B).filter(l=>l.symbol===sym);
+const held=B=>[...new Set(active(B).map(l=>l.symbol))].sort();
+const reserve=B=>r2(B.settings.capital*B.settings.reservePct/100);
+const deployable=B=>r2(Math.max(B.cash-reserve(B),0));
+const priceOf=(B,l)=>(B.prices[l.symbol]&&B.prices[l.symbol].p)||l.buyPrice;
+const invested=B=>r2(active(B).reduce((a,l)=>a+l.buyPrice*l.qty,0));
+const marketValue=B=>r2(active(B).reduce((a,l)=>a+priceOf(B,l)*l.qty,0));
+const equity=B=>r2(B.cash+marketValue(B));
+const unrealized=B=>r2(active(B).reduce((a,l)=>a+(priceOf(B,l)-l.buyPrice)*l.qty,0));
+function drawdownPct(B){const eq=equity(B),peak=Math.max(B.peak,eq);return peak>0?r2(100*(1-eq/peak)):0;}
+function nextLotNo(B,sym){const used=lotsOf(B,sym).map(l=>l.lotNo);for(let n=1;n<=3;n++)if(!used.includes(n))return n;return 4;}
+/* Gap for this stock's next parts: fixed at its first buy from the scan's suggestion, editable. */
+const stepFor=(B,sym)=>(B.steps&&B.steps[sym])||B.settings.stepPct;
+/* Reference for the next tranche: the open lot with the LOWEST purchase price. */
+function lastLot(B,sym){const ls=lotsOf(B,sym);return ls.length?ls.reduce((a,l)=>l.buyPrice<a.buyPrice?l:a):null;}
+/* Your rule: a NEW stock gets (free cash ÷ 3) per part, fixed at its first buy; its later lots use the same part. */
+const newPart=B=>Math.floor(deployable(B)/3);
+const partFor=(B,sym)=>lotsOf(B,sym).length&&B.parts&&B.parts[sym]?B.parts[sym]:newPart(B);
+function sizeTranche(B,price,part){
+  const s=B.settings; if(!(price>0)||!(part>0)) return{qty:0,ch:0};
+  const limit=deployable(B); if(limit<0.98*part) return{qty:0,ch:0};
+  let qty=Math.floor(part/price);
+  while(qty>0){const ch=legCharges("BUY",price,qty,s).total; if(price*qty+ch<=limit+1e-9) return{qty,ch}; qty--;}
+  return{qty:0,ch:0};
+}
+/* The single gate every purchase passes. Returns {allowed, reasons[], warnings[], qty, lotNo}. */
+function checkBuy(B,sym,price,qtyIn){
+  const s=B.settings, reasons=[], warnings=[], lotNo=nextLotNo(B,sym), last=lastLot(B,sym);
+  if(B.blocked[sym]) reasons.push(`Buying ${sym} is blocked: ${B.blocked[sym]}`);
+  if(lotNo>Math.min(s.maxTranches,3)) reasons.push(`All ${s.maxTranches} tranches are already used for ${sym}. No further averaging.`);
+  if(last){const gap=stepFor(B,sym), trig=last.buyPrice*(1-gap/100);
+    if(price>trig) reasons.push(`Price ${price.toFixed(2)} is not ${gap}% below your lowest open lot (lot ${last.lotNo} at ${last.buyPrice.toFixed(2)}). The next tranche opens at ${trig.toFixed(2)} or lower.`);}
+  else if(held(B).length>=s.maxPositions) reasons.push(s.maxPositions===1?`You already hold another stock. Your rule is one stock at a time: buy a new one after its lots are sold.`:`You already hold ${s.maxPositions} stocks, the maximum set in Setup.`);
+  if(active(B).length>=s.maxLots) reasons.push(`You already have ${s.maxLots} open lots, the maximum set in Setup.`);
+  let qty=qtyIn, ch;
+  const part=partFor(B,sym);
+  if(qty==null){const z=sizeTranche(B,price,part);qty=z.qty;ch=z.ch;} else ch=legCharges("BUY",price,qty,s).total;
+  const value=price*qty;
+  if(qty<=0) reasons.push(lotNo>1?`Only ${"₹"+deployable(B).toLocaleString("en-IN")} is free, but ${sym}'s part is ${"₹"+part.toLocaleString("en-IN")}. Other stocks are using the rest. You can enter a smaller number of shares to buy with what is free.`
+    :`Free cash ${"₹"+deployable(B).toLocaleString("en-IN")} is too little to start a new stock. No leverage, no borrowing.`);
+  if(qty>0&&price*qty<10000) warnings.push(`This lot is only ${"₹"+Math.round(price*qty).toLocaleString("en-IN")}: charges take a bigger share of a 3% gain on small amounts (net about ${roundTrip(price,r2(price*1.03),qty,s).netPct}%).`);
+  else if(value+ch>deployable(B)+1e-6) reasons.push("Order value plus charges is more than your deployable cash.");
+  if(drawdownPct(B)>=s.maxDrawdownPct) reasons.push(`Portfolio drawdown ${drawdownPct(B)}% has reached your ${s.maxDrawdownPct}% limit. Fresh buying is blocked.`);
+  const expo=lotsOf(B,sym).reduce((a,l)=>a+l.buyPrice*l.qty,0)+value;
+  if(expo>0.5*s.capital) warnings.push(`More than half your capital would be in ${sym}.`);
+  return{allowed:!reasons.length,reasons,warnings,qty,ch,lotNo,part,target:r2(price*(1+s.targetPct/100))};
+}
+function buy(B,sym,price,qtyIn,day,note){
+  price=r2(price); const c=checkBuy(B,sym,price,qtyIn); if(!c.allowed) throw new Error(c.reasons.join(" "));
+  B.parts=B.parts||{}; B.steps=B.steps||{};
+  if(!lotsOf(B,sym).length){B.parts[sym]=c.part;B.steps[sym]=(typeof suggestedStep==="function"&&suggestedStep(sym))||B.settings.stepPct;}
+  const lot={id:B.nextId++,symbol:sym,lotNo:c.lotNo,buyDate:day,buyPrice:price,qty:c.qty,buyCh:c.ch,targetPct:B.settings.targetPct,
+    target:c.target,status:"OPEN",exitDate:null,exitPrice:null,sellCh:0,net:0,reason:null};
+  B.cash=r2(B.cash-price*c.qty-c.ch); B.charges=r2(B.charges+c.ch); B.lots.push(lot);
+  B.tx.unshift({ts:day,kind:"BUY",symbol:sym,lotNo:lot.lotNo,qty:c.qty,price,charges:c.ch,cash:B.cash,note:note||""});
+  if(!B.prices[sym]) B.prices[sym]={p:price,ts:day};
+  return lot;
+}
+/* Sells ONE lot. Other lots of the same stock are never touched. */
+/* A trade the owner reports has already happened at the broker: record it even if it breaks a rule. */
+function recordBuy(B,sym,price,qty,day,note){
+  price=r2(price); const c=checkBuy(B,sym,price,qty);
+  if(!(qty>0)) throw new Error("Quantity must be at least 1.");
+  const first=!lotsOf(B,sym).length; B.parts=B.parts||{}; B.steps=B.steps||{};
+  if(first){B.parts[sym]=Math.max(c.part||0,Math.round(price*qty));B.steps[sym]=(typeof suggestedStep==="function"&&suggestedStep(sym))||B.settings.stepPct;}
+  const ch=legCharges("BUY",price,qty,B.settings).total;
+  const lot={id:B.nextId++,symbol:sym,lotNo:c.lotNo>3?3:c.lotNo,buyDate:day,buyPrice:price,qty,buyCh:ch,targetPct:B.settings.targetPct,
+    target:r2(price*(1+B.settings.targetPct/100)),status:"OPEN",exitDate:null,exitPrice:null,sellCh:0,net:0,reason:null};
+  B.cash=r2(B.cash-price*qty-ch); B.charges=r2(B.charges+ch); B.lots.push(lot);
+  B.tx.unshift({ts:day,kind:"BUY",symbol:sym,lotNo:lot.lotNo,qty,price,charges:ch,cash:B.cash,note:note||""});
+  if(!B.prices[sym]||String(B.prices[sym].ts)<day) B.prices[sym]={p:price,ts:day,src:"entered"};
+  B.peak=Math.max(B.peak,equity(B));
+  return{lot,broke:c.allowed?[]:c.reasons};
+}
+function sell(B,lotId,price,day,reason){
+  const lot=B.lots.find(l=>l.id===lotId); if(!lot||lot.status==="CLOSED") throw new Error("That lot is already closed.");
+  price=r2(price); if(!(price>0)) throw new Error("Enter the price the sale was executed at.");
+  const ch=legCharges("SELL",price,lot.qty,B.settings).total, net=r2((price-lot.buyPrice)*lot.qty-lot.buyCh-ch);
+  B.cash=r2(B.cash+price*lot.qty-ch); B.realized=r2(B.realized+net); B.charges=r2(B.charges+ch);
+  Object.assign(lot,{status:"CLOSED",exitDate:day,exitPrice:price,sellCh:ch,net,reason:reason||"MANUAL"});
+  B.tx.unshift({ts:day,kind:"SELL",symbol:lot.symbol,lotNo:lot.lotNo,qty:lot.qty,price,charges:ch,cash:B.cash,note:reason||"MANUAL"});
+  if(!lotsOf(B,lot.symbol).length){if(B.parts)delete B.parts[lot.symbol];if(B.steps)delete B.steps[lot.symbol];}   /* all sold: its money is free for any stock */
+  return lot;
+}
+/* Each lot is judged against its own target only. */
+function markTargets(B){const hit=[];for(const l of B.lots){if(l.status==="OPEN"&&priceOf(B,l)>=l.target){l.status="TARGET_REACHED";hit.push(l);}
+  else if(l.status==="TARGET_REACHED"&&priceOf(B,l)<l.target){l.status="OPEN";}}return hit;}
+function setPrice(B,sym,p,day){B.prices[sym]={p:r2(p),ts:day};markTargets(B);B.peak=Math.max(B.peak,equity(B));}
+function riskReview(B,sym){
+  const ls=lotsOf(B,sym), s=B.settings; if(!ls.length||!B.prices[sym]) return null;
+  const low=Math.min(...ls.map(l=>l.buyPrice)), px=B.prices[sym].p;
+  if(ls.length>=Math.min(s.maxTranches,3)&&px<=low*(1-s.riskExitPct/100))
+    return `All tranches are used and the price ${px.toFixed(2)} is more than ${s.riskExitPct}% below your lowest lot (${low.toFixed(2)}). There is no averaging capacity left.`;
+  return null;
+}
+function setCapital(B,total){const d=total-B.settings.capital;if(B.cash+d<0)throw new Error("Capital cannot be set below the amount currently invested.");
+  B.settings.capital=total;B.cash=r2(B.cash+d);B.peak=Math.max(B.peak+d,0);}
+/*CORE-END*/
+</script>
+<script>
+const $=s=>document.querySelector(s), main=$("#main");
+const esc=v=>v==null?"":String(v).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const inr=v=>"₹"+Number(v).toLocaleString("en-IN",{minimumFractionDigits:2,maximumFractionDigits:2});
+const sgn=v=>`<span class="${v>0?"pos":v<0?"neg":""}">${v>0?"+":v<0?"−":""}${inr(Math.abs(v))}</span>`;
+const today=()=>{const d=new Date();return new Date(d.getTime()-d.getTimezoneOffset()*60000).toISOString().slice(0,10);};
+const SCAN={"as_of":"2026-11-13","generated_at":"2026-11-13T23:29:20","regime":"sideways","universe_scanned":495,"eligible":450,"base_rate":48.6,"target_pct":3.0,"horizon":5,"validation":{"test_dates":21,"picks":420,"from":"2025-10-31","to":"2026-10-30","picks_hit_pct":56.2,"universe_hit_pct":42.0,"picks_fell_3pct_pct":59.5,"picks_avg_5d_return_pct":0.04,"universe_avg_5d_return_pct":-0.45,"worst_week_hit_pct":10.0,"best_week_hit_pct":90.0,"note":"Technical ranking only (no historical fundamentals). Bearish-regime dates are skipped, as the tool recommends no trades then. Costs are not included."},"vetoed":[{"symbol":"NEULANDLAB","reasons":["Deteriorating financials: profit and revenue both shrinking"]},{"symbol":"HBLENGINE","reasons":["Deteriorating financials: profit and revenue both shrinking"]},{"symbol":"ADANIGREEN","reasons":["Debt/equity 3.75 exceeds 2.5"]}],"top":[{"rank":1,"symbol":"SANSERA","name":"SANSERA ENGINEERING LTD","sector":"Consumer Cyclical","close":4708.4,"target":4849.65,"hit_rate":71.9,"hit_samples":26,"fall_rate":42.3,"score":86.25,"fundamental_pts":22.92,"state":"Consolidating","colour":"GREY","entry_zone":[4615.93,4754.64],"invalidation":3776.73,"rsi":66.3,"failed_checks":["Price structure is an entry setup","Risk/reward at least 0.50","Target sits below the nearest resistance"]},{"rank":2,"symbol":"ACUTAAS","name":"ACUTAAS CHEMICALS LIMITED","sector":"Basic Materials","close":4039.1,"target":4160.27,"hit_rate":68.6,"hit_samples":138,"fall_rate":50.7,"score":85.39,"fundamental_pts":22.86,"state":"Trending upward","colour":"GREY","entry_zone":[3666.98,3752.57],"invalidation":2999.41,"rsi":69.2,"failed_checks":["Price structure is an entry setup","RSI between 40 and 68","Price inside the entry zone","Momentum confirmation (MACD histogram rising or close above prior high)","Risk/reward at least 0.50"]},{"rank":3,"symbol":"CPPLUS","name":"ADITYA INFOTECH LIMITED","sector":"Industrials","close":4148.0,"target":4272.44,"hit_rate":74.7,"hit_samples":31,"fall_rate":32.3,"score":74.41,"fundamental_pts":21.43,"state":"Consolidating","colour":"GREY","entry_zone":[4049.25,4197.37],"invalidation":3520.55,"rsi":56.9,"failed_checks":["Price structure is an entry setup","Momentum confirmation (MACD histogram rising or close above prior high)","Risk/reward at least 0.50","Participation not showing distribution"]},{"rank":4,"symbol":"CUPID","name":"CUPID LIMITED","sector":"Consumer Defensive","close":377.8,"target":389.13,"hit_rate":66.2,"hit_samples":33,"fall_rate":45.5,"score":85.15,"fundamental_pts":22.86,"state":"Consolidating","colour":"GREY","entry_zone":[369.41,381.99],"invalidation":293.91,"rsi":69.2,"failed_checks":["Price structure is an entry setup","RSI between 40 and 68","Not extended (5-day gain at most 8%)","Risk/reward at least 0.50","Target sits below the nearest resistance"]},{"rank":5,"symbol":"MRPL","name":"MRPL","sector":"Energy","close":178.68,"target":184.04,"hit_rate":68.5,"hit_samples":74,"fall_rate":56.8,"score":76.36,"fundamental_pts":20.71,"state":"Trending upward","colour":"YELLOW","entry_zone":[173.75,177.8],"invalidation":154.95,"rsi":53.3,"failed_checks":["Price structure is an entry setup","Price inside the entry zone","Risk/reward at least 0.50"]},{"rank":6,"symbol":"CHENNPETRO","name":"CHENNAI PETROLEUM CORP LT","sector":"Energy","close":1428.2,"target":1471.05,"hit_rate":70.3,"hit_samples":89,"fall_rate":49.4,"score":73.09,"fundamental_pts":20.0,"state":"Retesting support","colour":"YELLOW","entry_zone":[1409.94,1477.98],"invalidation":1317.61,"rsi":46.8,"failed_checks":["Momentum confirmation (MACD histogram rising or close above prior high)","Risk/reward at least 0.50"]},{"rank":7,"symbol":"BHEL","name":"BHEL","sector":"Industrials","close":436.3,"target":449.39,"hit_rate":67.5,"hit_samples":75,"fall_rate":48.0,"score":77.15,"fundamental_pts":18.57,"state":"Consolidating","colour":"GREY","entry_zone":[428.93,439.99],"invalidation":370.33,"rsi":58.5,"failed_checks":["Price structure is an entry setup","Risk/reward at least 0.50"]},{"rank":8,"symbol":"ATHERENERG","name":"ATHER ENERGY LIMITED","sector":"Consumer Cyclical","close":1945.0,"target":2003.35,"hit_rate":66.2,"hit_samples":97,"fall_rate":54.6,"score":77.06,"fundamental_pts":14.66,"state":"Trending upward","colour":"GREY","entry_zone":[1712.89,1748.55],"invalidation":1310.04,"rsi":75.1,"failed_checks":["Price structure is an entry setup","RSI between 40 and 68","Not extended (5-day gain at most 8%)","Price inside the entry zone","Risk/reward at least 0.50"]},{"rank":9,"symbol":"MEESHO","name":"MEESHO LIMITED","sector":"Consumer Cyclical","close":257.07,"target":264.78,"hit_rate":65.3,"hit_samples":224,"fall_rate":null,"score":78.07,"fundamental_pts":12.07,"state":"Trending upward","colour":"GREY","entry_zone":[231.24,235.99],"invalidation":203.44,"rsi":72.0,"failed_checks":["Price structure is an entry setup","RSI between 40 and 68","Not extended (5-day gain at most 8%)","Price inside the entry zone","Risk/reward at least 0.50"]},{"rank":10,"symbol":"WELSPUNLIV","name":"WELSPUN LIVING LIMITED","sector":"Consumer Cyclical","close":250.14,"target":257.64,"hit_rate":65.6,"hit_samples":66,"fall_rate":47.0,"score":77.17,"fundamental_pts":15.0,"state":"Trending upward","colour":"GREY","entry_zone":[234.27,240.42],"invalidation":198.6,"rsi":59.7,"failed_checks":["Price structure is an entry setup","Price inside the entry zone","Momentum confirmation (MACD histogram rising or close above prior high)","Risk/reward at least 0.50"]},{"rank":11,"symbol":"MOTHERSON","name":"SAMVRDHNA MTHRSN INTL LTD","sector":"Consumer Cyclical","close":164.8,"target":169.74,"hit_rate":69.2,"hit_samples":35,"fall_rate":37.1,"score":70.8,"fundamental_pts":17.14,"state":"Consolidating","colour":"GREY","entry_zone":[162.01,166.2],"invalidation":144.48,"rsi":54.6,"failed_checks":["Price structure is an entry setup","Momentum confirmation (MACD histogram rising or close above prior high)","Risk/reward at least 0.50","Target sits below the nearest resistance"]},{"rank":12,"symbol":"MCX","name":"MULTI COMMODITY EXCHANGE","sector":"Financial Services","close":3720.0,"target":3831.6,"hit_rate":58.3,"hit_samples":99,"fall_rate":49.5,"score":86.6,"fundamental_pts":null,"state":"Trending upward","colour":"GREY","entry_zone":[3362.96,3426.52],"invalidation":2921.44,"rsi":68.6,"failed_checks":["Price structure is an entry setup","RSI between 40 and 68","Not extended (5-day gain at most 8%)","Price inside the entry zone","Risk/reward at least 0.50"]},{"rank":13,"symbol":"GLAND","name":"GLAND PHARMA LIMITED","sector":"Healthcare","close":3334.1,"target":3434.12,"hit_rate":55.2,"hit_samples":93,"fall_rate":37.6,"score":90.91,"fundamental_pts":25.0,"state":"Trending upward","colour":"GREY","entry_zone":[3107.26,3158.61],"invalidation":2718.45,"rsi":69.8,"failed_checks":["Price structure is an entry setup","RSI between 40 and 68","Price inside the entry zone","Risk/reward at least 0.50"]},{"rank":14,"symbol":"GROWW","name":"BILLIONBRAINS GARAGE VN L","sector":"Financial Services","close":224.95,"target":231.7,"hit_rate":60.0,"hit_samples":244,"fall_rate":null,"score":83.49,"fundamental_pts":null,"state":"Trending upward","colour":"GREY","entry_zone":[204.44,208.37],"invalidation":173.57,"rsi":70.1,"failed_checks":["Price structure is an entry setup","RSI between 40 and 68","Price inside the entry zone","Risk/reward at least 0.50"]},{"rank":15,"symbol":"GVT&D","name":"GE VERNOVA T&D INDIA LTD","sector":"Industrials","close":4420.0,"target":4552.6,"hit_rate":65.2,"hit_samples":490,"fall_rate":null,"score":75.4,"fundamental_pts":25.0,"state":"Breaking out","colour":"YELLOW","entry_zone":[4297.3,4387.22],"invalidation":3443.48,"rsi":60.8,"failed_checks":["Weekly trend supportive","Price inside the entry zone","Risk/reward at least 0.50"]},{"rank":16,"symbol":"COFORGE","name":"COFORGE LIMITED","sector":"Technology","close":2028.0,"target":2088.84,"hit_rate":63.3,"hit_samples":124,"fall_rate":45.2,"score":78.13,"fundamental_pts":20.0,"state":"Consolidating","colour":"GREY","entry_zone":[1994.64,2044.68],"invalidation":1778.84,"rsi":57.4,"failed_checks":["Price structure is an entry setup","Momentum confirmation (MACD histogram rising or close above prior high)","Risk/reward at least 0.50"]},{"rank":17,"symbol":"PWL","name":"PHYSICSWALLAH LIMITED","sector":"Consumer Defensive","close":131.58,"target":135.53,"hit_rate":68.0,"hit_samples":240,"fall_rate":null,"score":69.52,"fundamental_pts":14.29,"state":"Accumulating","colour":"YELLOW","entry_zone":[128.65,133.04],"invalidation":114.49,"rsi":52.4,"failed_checks":["Risk/reward at least 0.50"]},{"rank":18,"symbol":"PVRINOX","name":"PVR INOX LIMITED","sector":"Communication Services","close":1641.2,"target":1690.44,"hit_rate":63.0,"hit_samples":60,"fall_rate":36.7,"score":76.82,"fundamental_pts":14.29,"state":"Trending upward","colour":"GREY","entry_zone":[1495.76,1524.87],"invalidation":1333.7,"rsi":75.8,"failed_checks":["Price structure is an entry setup","RSI between 40 and 68","Price inside the entry zone","Momentum confirmation (MACD histogram rising or close above prior high)","Risk/reward at least 0.50"]},{"rank":19,"symbol":"CEMPRO","name":"CEMINDIA PROJECTS LIMITED","sector":"Industrials","close":1314.8,"target":1354.24,"hit_rate":67.7,"hit_samples":53,"fall_rate":50.9,"score":69.78,"fundamental_pts":18.57,"state":"Trending upward","colour":"GREY","entry_zone":[1250.15,1279.37],"invalidation":1036.78,"rsi":59.7,"failed_checks":["Price structure is an entry setup","Price inside the entry zone","Momentum confirmation (MACD histogram rising or close above prior high)","Risk/reward at least 0.50"]},{"rank":20,"symbol":"TDPOWERSYS","name":"TD POWER SYSTEMS LTD.","sector":"Industrials","close":637.55,"target":656.68,"hit_rate":73.4,"hit_samples":36,"fall_rate":33.3,"score":60.86,"fundamental_pts":23.44,"state":"Consolidating","colour":"GREY","entry_zone":[614.34,649.16],"invalidation":533.84,"rsi":41.7,"failed_checks":["Price structure is an entry setup","Score at least 65","Weekly trend supportive","Risk/reward at least 0.50"]}]};
+const PERF={view:"day",near:false,day:null,week:null};
+const FLT=(()=>{try{const f=JSON.parse(localStorage.getItem("nse-filters")||"{}");return{zone:f.zone||[],score:f.score||[]};}catch(e){return{zone:[],score:[]};}})();
+function saveFlt(){try{localStorage.setItem("nse-filters",JSON.stringify(FLT));}catch(e){}}
+const ZONE_CH=[["in","In buy zone"],["near","Near zone"],["out","Not in zone"],["invalid","Invalid"]];
+const SCORE_CH=[["90","90+"],["85","85–89"],["80","80–84"],["lt80","Below 80"]];
+function zoneKey(r){const inv=invalidity(r.symbol);if(inv&&inv.hard)return"invalid";return r.colour==="GREEN"?"in":r.colour==="YELLOW"?"near":"out";}
+function scoreKey(r){return r.score>=90?"90":r.score>=85?"85":r.score>=80?"80":"lt80";}
+function passFlt(r){return(!FLT.zone.length||FLT.zone.includes(zoneKey(r)))&&(!FLT.score.length||FLT.score.includes(scoreKey(r)));}
+function csvCell(v){v=v==null?"":String(v);return /[",\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v;}
+function top20Csv(rows){const d=cur(),t=d.target_pct,Z={in:"In zone",near:"Near zone",out:"Not in zone",invalid:"Invalid"};
+  const out=[[`Close of ${d.as_of}; Nifty ${d.regime}; data Yahoo Finance (unofficial); not advice`],
+   ["Rank","Symbol","Company","Sector","Score","Buy zone","Close","Entry zone low","Entry zone high",`+${t}% level`,"Gap for next parts %","Lot 2 at","Lot 3 at","Next results","News to check","CMP","CMP time","50 EMA","200 EMA","52W high","52W low","All-time high","ATH month","All-time low","ATL month","Why listed","Buy-zone status"]];
+  for(const r of rows){const z=r.entry_zone||[],ne=r.next_entries||[];
+    out.push([r.rank,r.symbol,r.name,r.sector,r.score,Z[zoneKey(r)],r.close,z[0],z[1],r.target,r.step?r.step.step:"",ne[0],ne[1],r.next_results,r.news_flag||"",(cmpOf(r.symbol)||{}).p,((cmpOf(r.symbol)||{}).ts||"").replace("T"," ").slice(0,16),r.ema50,r.ema200,r.high52,r.low52,r.ath,r.ath_date,r.atl,r.atl_date,(r.why||[]).join(" | "),r.zone]);}
+  return "\ufeff"+out.map(r=>r.map(csvCell).join(",")).join("\r\n");}
+async function downloadText(name,text,type){
+  if(!LOCAL&&window.claude&&claude.use){const dl=await claude.use("downloads");if(!dl)throw new Error("unavailable");
+    try{await dl.save({filename:name,data:text});}catch(e){if(e&&e.code==="declined")return;throw e;}return;}
+  const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([text],{type}));a.download=name;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},500);}
+let LIVE=null;              /* scan/latest from the artifact database, when newer than the embedded copy */
+const cur=()=>(LIVE&&LIVE.as_of>=SCAN.as_of)?LIVE:SCAN;
+const daysOld=d=>Math.round((new Date(today())-new Date(d))/86400000);
+const WEAK={trending_down:"trending down",distribution:"showing distribution (selling pressure)"};
+let QUOTES=null;            /* scan/quotes: prices fetched on the laptop every 15 minutes in market hours */
+function suggestedStep(sym){const d=cur(),r=d.top.find(x=>x.symbol===sym);
+  if(r&&r.step&&r.step.step) return r.step.step; const sn=d.snapshot&&d.snapshot[sym]; return sn&&sn.k?sn.k:null;}
+function stepWhy(sym){const d=cur(),r=d.top.find(x=>x.symbol===sym);if(r&&r.step&&r.step.why)return r.step.why;
+  const sn=d.snapshot&&d.snapshot[sym];return sn&&sn.a?`Moves about ${sn.a}% on a normal day; the gap is about two days' move.`:"";}
+function dayChg(sym){const q=QUOTES&&QUOTES.prices&&QUOTES.prices[sym];if(q&&q[1])return 100*(q[0]/q[1]-1);
+  const sn=cur().snapshot&&cur().snapshot[sym];return sn&&sn.r!=null?sn.r:null;}
+function applyQuotes(){if(!QUOTES||!QUOTES.prices)return;let ch=false;
+  for(const sym of held(B)){const q=QUOTES.prices[sym];
+    if(q&&(!B.prices[sym]||B.prices[sym].ts<QUOTES.ts)){setPrice(B,sym,q[0],QUOTES.ts);B.prices[sym].src="live";ch=true;}}
+  if(ch)persist();}
+const pc=v=>v==null?"":`<span class="${v>0?"pos":v<0?"neg":"soft"}">${v>0?"▲":v<0?"▼":""}${Math.abs(v).toFixed(2)}%</span>`;
+function tape(){
+  const items=[];const nq=QUOTES&&QUOTES.prices&&QUOTES.prices.NIFTY50;
+  if(nq) items.push(`<div class="chip"><b>NIFTY 50</b><span class="num">${nq[0].toLocaleString("en-IN")}</span>${pc(nq[1]?100*(nq[0]/nq[1]-1):null)}</div>`);
+  for(const sym of held(B)){const ls=lotsOf(B,sym),p=priceOf(B,ls[0]),u=r2(ls.reduce((a,l)=>a+(p-l.buyPrice)*l.qty,0));
+    items.push(`<div class="chip"><b>${esc(sym)}</b><span class="num">${p.toFixed(2)} ${pc(dayChg(sym))}</span><span class="num ${u>=0?"pos":"neg"}">${u>=0?"+":"−"}₹${Math.abs(u).toLocaleString("en-IN")}</span></div>`);}
+  const when=QUOTES&&QUOTES.ts?`<div class="chip"><b>Prices</b><span class="soft" style="font-size:13px">${esc(QUOTES.ts.replace("T"," ").slice(0,16))}</span><span class="soft" style="font-size:12px">delayed, Yahoo</span></div>`:"";
+  return items.length?items.join("")+when:"";}
+/* Why a stock is no longer valid, from the latest scan. null = nothing wrong found. */
+function invalidity(sym){
+  const d=cur(), sn=d.snapshot&&d.snapshot[sym];
+  const ch=(d.changes&&d.changes.invalid||[]).find(x=>x.symbol===sym);
+  if(sn&&sn.v&&sn.v.length) return{hard:true,why:"Fundamental red flag: "+sn.v.join("; ")};
+  if(sn&&sn.x&&sn.x.length) return{hard:true,why:"Failed screening: "+sn.x.join("; ")};
+  const gone=(d.invalid_list||[]).find(x=>x.symbol===sym&&x.removed===d.as_of);
+  if(gone) return{hard:true,why:gone.reason};
+  if(ch) return{hard:true,why:ch.reason};
+  if(sn&&sn.s==="trending_down") return{hard:true,why:"Price structure is trending down"};
+  if(sn&&WEAK[sn.s]) return{hard:false,why:"Price structure is "+WEAK[sn.s]};
+  return null;
+}
+/* Bring held stocks up to date from the scan: closing price, own-target check, and a buying block when invalid. */
+function applyScan(){
+  const d=cur(); if(!d.snapshot) return;
+  let changed=false;
+  for(const sym of held(B)){
+    const sn=d.snapshot[sym];
+    if(sn&&(!B.prices[sym]||B.prices[sym].ts.slice(0,10)<d.as_of)){setPrice(B,sym,sn.c,d.as_of);B.prices[sym].src="scan";changed=true;}
+    const inv=invalidity(sym);
+    if(inv&&inv.hard&&!B.blocked[sym]&&(B.blockAck||{})[sym]!==d.as_of){B.blocked[sym]=inv.why+` (scan of ${d.as_of})`;changed=true;}
+  }
+  if(changed) persist();
+}
+const PAGES=[["top20","Top 20"],["analyze","Analyze other stocks"],["book","Positions"],["perf","Performance"],["invalid","Became invalid"],["buy","Add buy"],["calc","Calculator"],["ledger","History"],["setup","Setup"],["faq","FAQ"]];
+const KEY="tranche-book-v1";
+let B=newBook(), cloudRef=null, writing=false, dirty=false, flash=null, scanNote="";
+const REASSESS=["I re-read the latest results and announcements: fundamentals are still healthy.",
+ "There is no serious negative news, governance concern or pledging problem.",
+ "The fall has a reason I understand, and my original reason for owning it still holds.",
+ "The broader market (Nifty) is not in a clear downtrend.",
+ "The price shows signs of stabilising: it is not in free fall today.",
+ "After this purchase I am comfortable with how much of my capital sits in this one stock."];
+
+function migrate(b){const n=newBook(),m={...n,...b,settings:{...DEFAULTS,...(b.settings||{})}};
+  if((b.v||1)<2){m.settings.stepPct=3;m.v=2;}
+  if(m.v<3){m.settings.maxPositions=10;m.settings.maxLots=30;m.parts=m.parts||{};
+    for(const sym of held(m)){const ls=lotsOf(m,sym);m.parts[sym]=Math.max(...ls.map(l=>Math.round(l.buyPrice*l.qty)));}m.v=3;}
+  m.parts=m.parts||{};
+  if(m.v<4){m.steps={};for(const sym of held(m))m.steps[sym]=m.settings.stepPct;m.v=4;}
+  m.steps=m.steps||{};m.blockAck=m.blockAck||{};return m;}
+function loadLocal(){try{const t=localStorage.getItem(KEY);if(t)B=migrate(JSON.parse(t));}catch(e){}}
+function setSync(t){$("#sync").textContent=t;}
+function persist(){
+  B.rev=Date.now(); if(B.tx.length>400)B.tx.length=400;
+  try{localStorage.setItem(KEY,JSON.stringify(B));}catch(e){}
+  pushCloud();
+}
+/* ---------- Desktop mode: the page is served by the Windows app on this laptop (no Claude needed) ---------- */
+const LOCAL=["127.0.0.1","localhost"].includes(location.hostname);
+/* ---------- Phone mode: page served by GitHub Pages; data in your PRIVATE GitHub repository (no Claude) ---------- */
+const PHONE=/\.github\.io$/i.test(location.hostname);
+let GH=null;try{GH=JSON.parse(localStorage.getItem("sta-gh")||"null");}catch(e){}
+let ghBookSha=null,ghWriting=false,ghDirty=false;
+const ghHeaders=raw=>({Authorization:"Bearer "+GH.token,Accept:raw?"application/vnd.github.raw+json":"application/vnd.github+json","X-GitHub-Api-Version":"2022-11-28"});
+const ghURL=path=>`https://api.github.com/repos/${encodeURIComponent(GH.owner)}/${encodeURIComponent(GH.repo)}/contents/${path}`;
+function b64ToText(b){const bin=atob(b.replace(/\n/g,""));return new TextDecoder().decode(Uint8Array.from(bin,c=>c.charCodeAt(0)));}
+function textToB64(t){const bytes=new TextEncoder().encode(t);let bin="";for(let i=0;i<bytes.length;i+=8192)bin+=String.fromCharCode(...bytes.subarray(i,i+8192));return btoa(bin);}
+async function ghRaw(path){const r=await fetch(ghURL(path)+"?v="+Date.now(),{headers:ghHeaders(true),cache:"no-store"});
+  if(r.status===404)return null;if(r.status===401)throw new Error("key");if(!r.ok)throw new Error("http "+r.status);return r.json();}
+async function ghBook(){const r=await fetch(ghURL("book.json")+"?v="+Date.now(),{headers:ghHeaders(false),cache:"no-store"});
+  if(r.status===404){ghBookSha=null;return null;}if(!r.ok)throw new Error("http "+r.status);const j=await r.json();ghBookSha=j.sha;
+  return JSON.parse(j.content?b64ToText(j.content):"null");}
+async function saveGHBook(){
+  if(!GH){setSync("Saved on this phone only (not connected)");return;}
+  if(ghWriting){ghDirty=true;return;}ghWriting=true;setSync("Saving…");
+  try{do{ghDirty=false;const body={message:"Book from phone",content:textToB64(JSON.stringify({rev:B.rev,json:JSON.stringify(B)}))};
+      if(ghBookSha)body.sha=ghBookSha;
+      let r=await fetch(ghURL("book.json"),{method:"PUT",headers:{...ghHeaders(false),"Content-Type":"application/json"},body:JSON.stringify(body)});
+      if(r.status===409||r.status===422){const remote=await ghBook();               // changed on the laptop meanwhile
+        if(remote&&remote.rev>B.rev){B=migrate(JSON.parse(remote.json));try{localStorage.setItem(KEY,JSON.stringify(B));}catch(e){}applyScan();render();setSync("Your laptop had newer changes; showing those");break;}
+        body.sha=ghBookSha;r=await fetch(ghURL("book.json"),{method:"PUT",headers:{...ghHeaders(false),"Content-Type":"application/json"},body:JSON.stringify(body)});}
+      if(!r.ok)throw new Error("http "+r.status);ghBookSha=(await r.json()).content.sha;}while(ghDirty);
+    setSync("Saved · syncs with your laptop");}
+  catch(e){setSync("Saved on this phone; will retry (no connection to GitHub)");setTimeout(()=>{if(!ghWriting)saveGHBook();},60000);}
+  ghWriting=false;}
+async function pollPhone(){if(!GH)return;let changed=false;
+  try{const sc=await ghRaw("app_payload.json");if(sc&&sc.as_of&&sc.top&&(!LIVE||sc.generated_at!==LIVE.generated_at)){LIVE=sc;applyScan();changed=true;}
+    const q=await ghRaw("quotes.json");if(q&&q.prices&&(!QUOTES||q.ts!==QUOTES.ts)){QUOTES=q;applyQuotes();changed=true;}
+    const an=await ghRaw("analyzed.json");if(an){const items=Object.values(an);if(JSON.stringify(items.map(x=>x.analyzed_at))!==JSON.stringify(ANA.items.map(x=>x.analyzed_at))){ANA.items=items;ANA.loaded=true;changed=true;}}
+    if(!ghWriting){const bk=await ghBook();if(bk&&bk.rev>B.rev){B=migrate(JSON.parse(bk.json));try{localStorage.setItem(KEY,JSON.stringify(B));}catch(e){}applyScan();applyQuotes();changed=true;}}
+    const lt=QUOTES&&QUOTES.ts?QUOTES.ts.replace("T"," ").slice(0,16):null;setSync("Phone · synced with your laptop"+(lt?" · prices "+lt:""));scanNote="";}
+  catch(e){setSync(e.message==="key"?"GitHub refused the access key: reconnect in Setup":"Offline: showing the last data on this phone");}
+  if(changed||deferredRender){if(typing())deferredRender=true;else{deferredRender=false;render();}}}
+async function initPhone(){
+  try{const m=document.createElement("link");m.rel="manifest";m.href="manifest.webmanifest";document.head.appendChild(m);
+    const a=document.createElement("link");a.rel="apple-touch-icon";a.href="icons/apple-touch-icon.png";document.head.appendChild(a);
+    if("serviceWorker" in navigator)navigator.serviceWorker.register("sw.js").catch(()=>{});}catch(e){}
+  if(!GH){setSync("Not connected yet");location.hash="setup";render();return;}
+  setSync("Loading from GitHub…");await pollPhone();
+  if(B.rev>0&&!ghBookSha){saveGHBook();}
+  setInterval(pollPhone,120000);document.addEventListener("visibilitychange",()=>{if(!document.hidden)pollPhone();});}
+async function getJSON(u){try{const r=await fetch(u,{cache:"no-store"});return r.ok?await r.json():null;}catch(e){return null;}}
+async function saveLocalBook(){
+  try{const r=await fetch("/api/book",{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify({rev:B.rev,json:JSON.stringify(B)})});
+    setSync(r.ok?"Saved on this laptop":"Could not save to the laptop file; kept in this window only");}
+  catch(e){setSync("Could not reach the app's local server; kept in this window only");}}
+function typing(){const a=document.activeElement;return a&&(a.tagName==="INPUT"||a.tagName==="TEXTAREA"||a.tagName==="SELECT")&&!a.closest("#chat");}
+let deferredRender=false;
+async function pollLocal(){
+  let changed=false;
+  const sc=await getJSON("/api/scan");
+  if(sc&&sc.as_of&&sc.top&&(!LIVE||sc.generated_at!==LIVE.generated_at)){LIVE=sc;applyScan();changed=true;}
+  const q=await getJSON("/api/quotes");
+  if(q&&q.prices&&(!QUOTES||q.ts!==QUOTES.ts)){QUOTES=q;applyQuotes();checkAlerts();changed=true;}
+  const bk=await getJSON("/api/book");
+  if(bk&&bk.json&&bk.rev>B.rev){const r=JSON.parse(bk.json);if(r){B=migrate(r);try{localStorage.setItem(KEY,JSON.stringify(B));}catch(e){}applyScan();applyQuotes();changed=true;setSync("Updated with changes from your phone");}}
+  const st=await getJSON("/api/status");
+  if(st){$("#refreshBtn").disabled=!!st.refreshing;$("#refreshBtn").textContent=st.refreshing?"Fetching prices…":"↻ Refresh prices";}
+  if(changed||deferredRender){if(typing())deferredRender=true;else{deferredRender=false;render();}}
+}
+async function initLocal(){
+  setSync("Desktop app · saved on this laptop");$("#deskTools").hidden=false;
+  const bk=await getJSON("/api/book");
+  if(bk&&bk.json){const r=JSON.parse(bk.json);if(r&&r.rev>B.rev){B=migrate(r);try{localStorage.setItem(KEY,JSON.stringify(B));}catch(e){}}}
+  else if(B.rev>0) saveLocalBook();
+  if("Notification" in window&&Notification.permission!=="granted")$("#notifBtn").hidden=false;
+  $("#notifBtn").onclick=async()=>{try{const p=await Notification.requestPermission();$("#notifBtn").hidden=p==="granted";}catch(e){}};
+  $("#refreshBtn").onclick=async()=>{await fetch("/api/refresh",{method:"POST"}).catch(()=>{});$("#refreshBtn").disabled=true;$("#refreshBtn").textContent="Fetching prices…";
+    for(const w of [6000,12000,20000,30000])setTimeout(pollLocal,w);};
+  applyScan();render();await pollLocal();setInterval(pollLocal,60000);
+}
+/* Windows notifications and an in-app banner when a lot reaches its target or a stock reaches its next entry. Once per day each. */
+function checkAlerts(){
+  if(!QUOTES||!QUOTES.prices)return;const day=today(),seen=(()=>{try{const o=JSON.parse(localStorage.getItem("nse-alerted")||"{}");return o.day===day?o:{day,keys:[]};}catch(e){return{day,keys:[]};}})();
+  const out=[];
+  for(const sym of held(B)){const q=QUOTES.prices[sym];if(!q)continue;const p=q[0],ls=lotsOf(B,sym);
+    for(const l of ls)if(p>=l.target)out.push({k:"T|"+l.id,t:`Target: ${sym} lot ${l.lotNo}`,b:`${p.toFixed(2)} reached ${l.target.toFixed(2)}. Sell this lot only (${l.qty} shares).`});
+    if(ls.length<3){const g=stepFor(B,sym),e=r2(lastLot(B,sym).buyPrice*(1-g/100));
+      if(p<=e)out.push({k:"E|"+sym+"|"+ls.length,t:`Next entry: ${sym}`,b:B.blocked[sym]?`${p.toFixed(2)} is at the next entry level ${e.toFixed(2)}, but buying is blocked.`:`${p.toFixed(2)} is at or below ${e.toFixed(2)} (gap ${g}%). Lot ${ls.length+1} would be bought here under your rule.`});}}
+  const fresh=out.filter(a=>!seen.keys.includes(a.k));if(!fresh.length)return;
+  seen.keys.push(...fresh.map(a=>a.k));try{localStorage.setItem("nse-alerted",JSON.stringify(seen));}catch(e){}
+  $("#alertBar").innerHTML=fresh.map(a=>`<p class="note good" style="margin:0 0 8px"><strong>${esc(a.t)}.</strong> ${esc(a.b)}</p>`).join("");
+  if("Notification" in window&&Notification.permission==="granted")for(const a of fresh){try{new Notification(a.t,{body:a.b});}catch(e){}}
+}
+async function pushCloud(){
+  if(LOCAL){return saveLocalBook();}
+  if(PHONE){return saveGHBook();}
+  if(!cloudRef){setSync("Saved on this device only");return;}
+  if(writing){dirty=true;return;}
+  writing=true;setSync("Saving…");
+  try{do{dirty=false;await cloudRef.set({rev:B.rev,json:JSON.stringify(B)});}while(dirty);setSync("Saved to your Claude account");}
+  catch(e){setSync("Saved on this device only (account save failed)");}
+  writing=false;
+}
+async function initCloud(){
+  const giveUp=setTimeout(()=>{if(!cloudRef)setSync("Saved on this device only");},10000);
+  try{
+    if(!window.claude||!window.claude.use) throw 0;
+    const [db,user]=await Promise.all([window.claude.use("db"),window.claude.use("user")]);
+    if(!db||!user) throw 0;
+    const uid=await user.id(); if(!uid) throw 0;
+    const scanTimer=setTimeout(()=>{if(!LIVE){scanNote="The daily list could not be reached; showing the copy saved in the app ("+SCAN.as_of+").";render();}},10000);
+    db.doc("scan/latest").onSnapshot(sn=>{
+      clearTimeout(scanTimer);
+      if(sn.exists){const d=sn.data();if(d&&d.as_of&&d.top){LIVE=d;scanNote="";applyScan();render();}}
+      else if(!sn.metadata.fromCache){scanNote="";}
+    },()=>{clearTimeout(scanTimer);scanNote="The daily list could not be loaded; showing the copy saved in the app ("+SCAN.as_of+").";render();});
+    db.doc("scan/quotes").onSnapshot(sn=>{if(sn.exists){const d=sn.data();if(d&&d.prices){QUOTES=d;applyQuotes();render();}}},()=>{});
+    const ref=db.doc("book/main");let snap=await ref.get();
+    if(!snap.exists){const old=await db.doc("data/users/"+uid+"/book").get();if(old.exists)snap=old;}
+    ref.onSnapshot(sn=>{if(!sn.exists||sn.metadata.hasPendingWrites)return;const r=JSON.parse(sn.data().json||"null");
+      if(r&&r.rev>B.rev){B=migrate(r);try{localStorage.setItem(KEY,JSON.stringify(B));}catch(e){}applyScan();applyQuotes();render();setSync("Updated from your Claude account");}},()=>{});
+    cloudRef=ref;
+    if(snap.exists){const remote=JSON.parse(snap.data().json||"null");
+      if(remote&&remote.rev>B.rev){B=migrate(remote);try{localStorage.setItem(KEY,JSON.stringify(B));}catch(e){}applyScan();render();setSync("Saved to your Claude account");}
+      else if(B.rev>((remote&&remote.rev)||0)) pushCloud(); else setSync("Saved to your Claude account");}
+    else if(B.rev>0) pushCloud(); else setSync("Ready. Your book will be saved to your Claude account");
+  }catch(e){setSync("Saved on this device only");}
+  clearTimeout(giveUp);
+}
+
+function page(){const h=location.hash.slice(1);return PAGES.some(p=>p[0]===h)?h:"top20";}
+function recipRow(r){return `<div class="row recip" style="gap:6px;align-items:flex-end;margin-bottom:6px">
+  <label style="flex:1;min-width:140px">Name<input class="rName" value="${esc(r.name||"")}" placeholder="e.g. Anil"></label>
+  <label style="flex:1;min-width:170px">WhatsApp number<input class="rPhone" type="tel" value="${esc(r.phone||"")}" placeholder="+919876543210"></label>
+  <button type="button" data-recip-del="1" aria-label="Remove ${esc(r.name||"this person")}">Remove</button></div>`;}
+function showCloudUrl(u){$("#clUrl").innerHTML=u?`<div class="note good" style="margin-top:8px"><strong>Phone app address:</strong> <a href="${esc(u)}" target="_blank" rel="noopener">${esc(u)}</a><br>Open it in <strong>Chrome on your phone</strong> (send it to yourself on WhatsApp), enter the same username and key there, then Chrome menu ⋮ → <strong>Add to Home screen</strong>. <button type="button" id="clCopy">Copy address</button></div>`:"";}
+async function fillCloud(){if(!LOCAL||!$("#clOwner"))return;const c=await fetch("/api/cloud").then(r=>r.json()).catch(()=>null);if(!c)return;
+  if(c.owner)$("#clOwner").value=c.owner;$("#clData").value=c.data_repo;$("#clApp").value=c.app_repo;
+  if(c.token_set)$("#clTok").placeholder="saved, leave empty to keep";
+  showCloudUrl(c.url);if(c.last_sync&&!$("#clOut").textContent)$("#clOut").textContent="Last synced "+c.last_sync.replace("T"," ").slice(0,16)+".";}
+async function fillWa(){if(!LOCAL||!$("#waPhone"))return;const c=await waCfg();if(!c)return;
+  if(c.phone)$("#waPhone").value=c.phone;
+  $("#waRecips").innerHTML=(c.recipients||[]).map(recipRow).join("");
+  if(c.last_opened&&!$("#waOut").textContent)$("#waOut").textContent="Last opened in WhatsApp "+c.last_opened.replace("T"," ").slice(0,16)+" (list of "+c.last_list+").";}
+function render(){
+  const p=page();
+  $("#nav").innerHTML=PAGES.map(([id,t])=>`<a href="#${id}" ${id===p?'aria-current="page"':""}>${t}</a>`).join("");
+  $("#tape").innerHTML=tape();
+  main.innerHTML=(flash?`<p class="note ${flash.cls}" role="status">${esc(flash.msg)}</p>`:"")+VIEWS[p]();
+  flash=null;if(p==="setup"){fillWa();fillCloud();}
+}
+const tile=(k,v,c)=>`<div class="tile ${c||""}"><div class="k">${esc(k)}</div><div class="v">${v}</div></div>`;
+const STATUS={OPEN:["open","Open"],TARGET_REACHED:["hit","Target reached"],EXIT_SUBMITTED:["sub","Exit order placed"],CLOSED:["closed","Closed"]};
+
+function fallbackWhy(r,t){const w=[`Score ${r.score.toFixed(0)}/100${r.fundamental_pts!=null?`, fundamentals ${r.fundamental_pts.toFixed(0)}/25`:" (company data not available)"}.`,
+  `Price structure: ${r.state.toLowerCase()}.`,`History: after days like today it touched +${t}% within 5 sessions ${r.hit_rate.toFixed(0)}% of the time (${r.hit_samples} cases)${r.fall_rate!=null?`, and −${t}% ${r.fall_rate.toFixed(0)}% of the time`:""}.`];return w;}
+function fallbackZone(r){if(r.colour==="GREEN")return"In the buy zone: every entry check passed.";
+  const z=r.entry_zone;let s=z&&r.close>z[1]?`Not in the buy zone yet: ${r.close.toFixed(2)} is ${(100*(r.close/z[1]-1)).toFixed(1)}% above the zone.`:z&&r.close<z[0]?"Below the buy zone: wait for the price to steady.":"Price is in or near the zone.";
+  const f=r.failed_checks.filter(x=>!/Risk\/reward/.test(x));return s+(f.length?" Not yet passed: "+f.join("; ").toLowerCase()+".":"");}
+function stepSection(d){
+  const st=d.step_test;
+  if(!st) return `<section class="card"><h2>Which fall should trigger your next part: 3, 5, 7 or 10%?</h2><p>This comparison appears after the next scan. It replays your exact rules on about two years of past picks for each choice.</p></section>`;
+  const R=st.results, best=R.find(x=>x.step_pct===st.best_return_step);
+  return `<section class="card"><h2>Which fall should trigger your next part: 3, 5, 7 or 10%?</h2>
+  <p class="soft">${st.positions} past positions from ${esc(st.from)} to ${esc(st.to)}, each with a part of ${inr(st.part)}, followed for ${st.horizon_sessions} sessions with your rules.</p>
+  <div class="scroll"><table><thead><tr><th>Next part at</th><th class="r">All lots sold</th><th class="r">All 3 parts used</th><th class="r">Still stuck after 3 months</th><th class="r">Money stuck (avg)</th><th class="r">Paper loss on stuck (avg)</th><th class="r">Profit per position</th><th class="r">Return on money used, per year</th></tr></thead><tbody>
+  ${R.map(x=>`<tr${x.step_pct===st.best_return_step?' style="font-weight:600"':""}><td>${x.step_pct}% below</td><td class="r">${x.completed_pct}%</td><td class="r">${x.all_3_open_pct}%</td><td class="r">${x.stuck_pct}%</td><td class="r">${inr(x.stuck_money_avg||0)}</td><td class="r">${x.stuck_loss_avg!=null?sgn(x.stuck_loss_avg):"–"}</td><td class="r">${sgn(x.avg_pnl_per_position)}</td><td class="r">${x.return_on_capital_pa_pct}%</td></tr>`).join("")}</tbody></table></div>
+  <p>How often a stock is fully sold is the same for every choice, because your first lot always needs its own +3%. The choice changes how much extra money you put in and how much is trapped when a stock does not come back. On this history the best return per rupee used came from <strong>${st.best_return_step}%</strong>${best?` (${best.return_on_capital_pa_pct}% a year)`:""}; the least money left trapped came from ${R.reduce((a,x)=>(x.stuck_money_avg||0)<(a.stuck_money_avg||0)?x:a).step_pct}%. Your current setting is ${B.settings.stepPct}%; change it under Setup.</p>
+  <p class="soft">${esc(st.note)}</p></section>`;}
+const READ={GREEN:["hit","In buy zone"],YELLOW:["sub","Close to buy zone"],RED:["closed","Avoid"],GREY:["open","Not in buy zone"]};
+function shortDay(iso){try{return new Date(iso+"T00:00:00").toLocaleDateString("en-IN",{day:"numeric",month:"short"});}catch(e){return iso;}}
+function cmpOf(sym){const q=QUOTES&&QUOTES.prices&&QUOTES.prices[sym];return q&&q[0]?{p:q[0],prev:q[1],ts:QUOTES.ts}:null;}
+function cmpLine(r){const q=cmpOf(r.symbol);if(!q)return `<p class="soft" style="margin:0 0 8px">CMP not fetched yet${LOCAL?" (tap Refresh prices)":""}.</p>`;
+  const ch=q.prev?100*(q.p/q.prev-1):null, z=r.entry_zone, tm=(q.ts||"").replace("T"," ").slice(11,16);
+  let where="";
+  if(z){if(q.p>=z[0]&&q.p<=z[1])where='<span class="pill open">CMP is inside the buy zone</span>';
+    else if(q.p<z[0])where=`<span class="pill closed">CMP ${((1-q.p/z[0])*100).toFixed(1)}% below the zone</span>`;
+    else where=`<span class="soft">${((q.p/z[1]-1)*100).toFixed(1)}% above the zone</span>`;}
+  const hit=q.p>=r.target?' <span class="pill open">at or above +'+t3()+'%</span>':"";
+  return `<div class="cmp"><span class="cmpL">CMP</span> <strong class="num">₹${q.p.toFixed(2)}</strong>${ch!=null?` <span class="${ch>0?"pos":ch<0?"neg":""}">${ch>0?"+":""}${ch.toFixed(2)}% today</span>`:""}
+   <span class="soft">· ${esc(tm)}</span> ${where}${hit}</div>`;}
+function t3(){return (cur().target_pct||3);}
+function levelsBlock(r){if(r.ema50==null&&r.ath==null)return `<p class="soft" style="margin:6px 0 0;font-size:14px">EMA, all-time high and low appear from the next scan.</p>`;
+  const px=(cmpOf(r.symbol)||{}).p||r.close, rel=v=>v?`<span class="${px>=v?"pos":"neg"}">${px>=v?"above":"below"}</span>`:"";
+  const pct=(a,b)=>((a/b-1)*100).toFixed(1);
+  return `<div class="levels"><div><dt>50 EMA</dt><dd>${r.ema50!=null?r.ema50.toFixed(2)+" · price "+rel(r.ema50):"–"}</dd></div>
+   <div><dt>200 EMA</dt><dd>${r.ema200!=null?r.ema200.toFixed(2)+" · price "+rel(r.ema200):"–"}</dd></div>
+   <div><dt>52-week high / low</dt><dd>${r.high52!=null?r.high52.toFixed(2)+" / "+r.low52.toFixed(2):"–"}</dd></div>
+   <div><dt>All-time high</dt><dd>${r.ath!=null?r.ath.toFixed(2)+` <span class="soft">${esc(r.ath_date||"")} · ${pct(px,r.ath)}% from it</span>`:"–"}</dd></div>
+   <div><dt>All-time low</dt><dd>${r.atl!=null?r.atl.toFixed(2)+` <span class="soft">${esc(r.atl_date||"")}</span>`:"–"}</dd></div></div>
+   ${r.since?`<p class="soft" style="margin:2px 0 0;font-size:13px">All-time = Yahoo Finance history since ${esc(r.since)}, adjusted for splits.</p>`:""}`;}
+function stockCard(r,t,opt){const rd=READ[r.colour]||READ.GREY, inv=opt&&opt.own?((r.vetoes||[]).length?{hard:true,why:r.vetoes.join("; ")}:/down/i.test(r.state||"")?{hard:false,why:"Price structure is trending down: not a buy under these rules."}:null):invalidity(r.symbol), mine=held(B).includes(r.symbol);
+   const why=r.why||fallbackWhy(r,t), zone=r.zone||fallbackZone(r);
+   return `<section class="card"><div class="row" style="align-items:center;justify-content:space-between;gap:6px">
+   <div class="row" style="align-items:center;gap:10px"><span class="score" style="background:${r.score>=88?"var(--good)":r.score>=84?"var(--accent)":"var(--accent2)"}" aria-label="Score ${r.score.toFixed(0)} of 100">${r.score.toFixed(0)}</span><h2 style="margin:0">${typeof r.rank==="number"?r.rank+". ":""}${esc(r.symbol)}</h2></div><span class="pill ${inv&&inv.hard?"closed":rd[0]}">${inv&&inv.hard?"Invalid":rd[1]}</span></div>
+   <p class="soft" style="margin:2px 0 8px">${esc(r.name||"")}${r.sector?" · "+esc(r.sector):""}${mine?" · <strong>you hold this</strong>":""}</p>
+   ${inv?`<p class="note ${inv.hard?"bad":""}" style="margin:0 0 8px">${esc(inv.why)}</p>`:""}
+   ${cmpLine(r)}
+   <p style="margin:0 0 8px"><strong>${esc(zone)}</strong></p>
+   <div class="lot" style="border-top:0;padding:0"><dl>
+   <div><dt>Close${r.as_of?" ("+esc(shortDay(r.as_of))+")":""}</dt><dd>${r.close.toFixed(2)}</dd></div><div><dt>+${t}% level</dt><dd>${r.target.toFixed(2)}</dd></div>
+   <div><dt>Score</dt><dd>${r.score.toFixed(1)} / 100</dd></div>
+   <div><dt>Entry zone</dt><dd>${r.entry_zone?r.entry_zone[0].toFixed(2)+" to "+r.entry_zone[1].toFixed(2):"n/a"}</dd></div>
+   ${r.next_results?`<div><dt>Next results</dt><dd>${esc(r.next_results)}</dd></div>`:""}
+   ${r.step?`<div><dt>Gap for its next parts</dt><dd>${r.step.step}%</dd></div><div><dt>If bought at close, lots 2 and 3 at</dt><dd>${r.next_entries.map(x=>x.toFixed(2)).join(" / ")}</dd></div>`:""}</dl></div>
+   ${levelsBlock(r)}
+   ${opt&&opt.extra?opt.extra:""}
+   ${r.step&&r.step.why?`<p class="soft" style="margin:6px 0 0;font-size:14px">${esc(r.step.why)}</p>`:""}
+   ${opt&&opt.notListed&&opt.notListed.length?`<details style="margin-top:8px"><summary>Why it is not listed</summary>
+     <ul class="plain">${opt.notListed.map(w=>`<li><strong>${esc(w)}</strong></li>`).join("")}</ul>
+     <p class="soft" style="margin:6px 0 2px">What the analysis found:</p><ul class="plain">${why.map(w=>`<li>${esc(w)}</li>`).join("")}</ul></details>`
+   :`<details style="margin-top:8px"><summary>Why it is listed</summary><ul class="plain">${why.map(w=>`<li>${esc(w)}</li>`).join("")}</ul></details>`}
+   <details ${r.news_flag?"open":""} style="margin-top:6px"><summary>Recent news${r.news?` (${r.news.length})`:""}${r.news_flag?' <span class="neg">· headline to check</span>':""}</summary>
+   ${r.news?(r.news.length?`<ul class="plain">${r.news.map(n=>`<li>${n.flag?'<strong class="neg">Check:</strong> ':""}<a href="${esc(n.url)}" target="_blank" rel="noopener">${esc(n.title)}</a> <span class="soft">${esc(n.source||"")} ${esc(n.date||"")}</span></li>`).join("")}</ul>`:'<p class="soft">No headlines found in the last 14 days.</p>'):'<p class="soft">News appears from the next scan.</p>'}
+   <p class="soft" style="margin:4px 0 0">Headlines only, matched by name. "Check" marks words such as SEBI, probe, default or resign; read the article before deciding.</p></details>
+   </section>`;}
+const WA={show:false,cfg:null,msg:"",rows:null};
+async function waCfg(){WA.cfg=await fetch("/api/whatsapp").then(r=>r.json()).catch(()=>null);return WA.cfg;}
+function waChooser(){if(!WA.show)return "";const c=WA.cfg||{},rs=c.recipients||[];
+  const b=(to,l)=>`<button type="button" data-wa-to="${esc(to)}">${esc(l)}</button>`;
+  return `<section class="card" aria-label="Send the list on WhatsApp"><h3 style="margin:0 0 6px">Send the list on WhatsApp</h3>
+   <p class="soft" style="margin:0 0 8px">Click a name: WhatsApp opens that chat with the list typed in, and you press <strong>Send</strong>. For groups, click the last button: WhatsApp's <em>Send to</em> list opens, tick one or more groups or people, and press <strong>Send</strong>.</p>
+   <div class="row" style="gap:6px">${c.phone?b("me","Me (Message yourself)"):""}${rs.map(r=>b(r.phone,r.name)).join("")}${b("pick","A group or other chat…")}
+   <button type="button" data-wa-close="1">Close</button></div>
+   ${!c.phone?'<p class="soft" style="margin:8px 0 0">Add your own number and the people you send to in Setup.</p>':""}
+   <p role="status" aria-live="polite" style="margin:8px 0 0">${esc(WA.msg)}</p></section>`;}
+const ANA={items:[],ready:true,busy:"",err:"",scanning:false,loaded:false};
+async function loadAnalyzed(){if(!LOCAL)return;const d=await fetch("/api/analyzed").then(r=>r.json()).catch(()=>null);
+  if(d){ANA.items=d.items||[];ANA.ready=d.ready;ANA.scanning=d.scanning;ANA.loaded=true;if(page()==="analyze"&&!typing())render();}}
+async function runAnalyze(q){q=(q||"").trim();if(!q||ANA.busy)return;ANA.busy=q;ANA.err="";render();
+  const r=await fetch("/api/analyze",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({query:q})}).then(x=>x.json()).catch(()=>({ok:false,error:"The app is not responding."}));
+  ANA.busy="";if(r.ok){ANA.items=[r.item,...ANA.items.filter(x=>x.symbol!==r.item.symbol)];setTimeout(pollLocal,20000);}else ANA.err=r.error||"Could not analyse that stock.";
+  render();const el=$("#anaQ");if(el&&!r.ok)el.focus();}
+const VIEWS={
+faq(){
+  const t=cur().target_pct||3, m=cur().min_score||80;
+  const q=(title,body,open)=>`<details class="card faq" ${open?"open":""}><summary>${title}</summary><div class="faqA">${body}</div></details>`;
+  const pill=(c,l)=>`<span class="pill ${c}">${l}</span>`;
+  return `<section><h2>FAQ</h2><p class="soft" style="margin:0">How the tool decides things, in plain words. Tap a question to open it.</p></section>
+  <h3 class="faqH">Buy zone</h3>
+  ${q("What do the four status tags mean?",`<ul class="plain">
+   <li>${pill("hit","In buy zone")} <strong>Green.</strong> Every check passed: price inside the entry range, trend, momentum, RSI, room to the +${t}% target, score ${m}+. The best setup the tool can find.</li>
+   <li>${pill("sub","Close to buy zone")} <strong>Amber.</strong> The stock is in an uptrend with a score of at least ${m-10}, but 1 to 3 checks are not met yet. The card says exactly what it is waiting for, e.g. "RSI to cool below 68".</li>
+   <li>${pill("open","Not in buy zone")} <strong>Blue.</strong> More checks fail, or the chart is not in an uptrend. Not a buy for now.</li>
+   <li>${pill("closed","Avoid")} <strong>Red.</strong> A must-pass check failed: downtrend, Nifty bearish, too little trading, or a company red flag (governance, very high debt, heavy pledging).</li></ul>
+   <p>The status is about the whole setup, not only the price. That is why a stock can have its price inside the entry range and still say "Close to buy zone".</p>`,true)}
+  ${q("How is the entry price range (e.g. 344.35 to 350.10) calculated?",`<p>The tool first reads what the chart is doing, then uses the matching rule. <strong>ATR</strong> is the stock's average daily move in rupees, so jumpy stocks get wider ranges.</p>
+   <div class="scroll"><table><thead><tr><th>Chart pattern</th><th>Bottom of range</th><th>Top of range</th><th>Idea</th></tr></thead><tbody>
+   <tr><td>Breaking out (closed above its 20-day high)</td><td>The old 20-day high</td><td>Old 20-day high + ½ ATR</td><td>Buy the retest of the breakout, not the spike</td></tr>
+   <tr><td>Trending upward</td><td>20-day EMA − ¼ ATR</td><td>20-day EMA + ¼ ATR</td><td>Wait for a dip to the trend line</td></tr>
+   <tr><td>Retesting support</td><td>Lower of 20/50-day EMA − 1%</td><td>Higher of 20/50-day EMA + 1%</td><td>Buy where it has been bouncing</td></tr>
+   <tr><td>Anything else (e.g. consolidating)</td><td>Close − ½ ATR</td><td>Close + ¼ ATR</td><td>A tight band around today's price</td></tr></tbody></table></div>
+   <p><strong>Example (ANGELONE, 13 Nov):</strong> it broke out above its 20-day high of ₹344.35. Its ATR was about ₹11.50, half of that ₹5.75. Range: ₹344.35 to ₹344.35 + ₹5.75 = ₹350.10.</p>`)}
+  ${q("Which checks decide the status?",`<p><strong>Must pass</strong> (any failure = Avoid):</p><ul class="plain"><li>No company red flag (governance, very high debt, promoter pledge over 30%)</li><li>Enough trading volume</li><li>Stock not in a downtrend or being sold off</li><li>Nifty not in a downtrend</li></ul>
+   <p><strong>Setup checks</strong> (all must pass for green):</p><ol style="padding-left:20px">
+   <li>Chart is a buying setup: retesting support, breaking out or accumulating</li><li>Score at least ${m}</li><li>Weekly trend up (price above a rising 30-week average)</li>
+   <li>RSI between 40 and 68 (not weak, not overheated)</li><li>Not up more than 8% in the last 5 days</li><li><strong>Price inside the entry range</strong></li>
+   <li>Momentum turning up (MACD rising or close above the previous day's high)</li><li>For a breakout: volume at least 1.5× normal</li>
+   <li>The +${t}% target is below the next resistance (a recent or 52-week high), so there is room to reach it</li><li>Company data available; big holders not selling</li></ol>
+   <p>A worrying news headline (probe, penalty, default, etc.) also drops a green stock to amber until you have read it.</p>`)}
+  ${q("The price was inside the range but it said “Close to buy zone”. Is that a mistake?",`<p>No. The range is only check 6. Other checks can still fail. On 13 Nov ANGELONE was inside its range, but its RSI was 73 (overheated, often dips for a few days) and there was a recent high just below its +${t}% target. Two checks failed, so it showed amber with "Waiting for: RSI to cool below 68; room below the next resistance level". Buying inside the range is your call; the checks only tell you how clean the setup is.</p>`)}
+  ${q("What does “CMP is inside the buy zone” on the card mean?",`<p>It compares the live price (CMP, updated every 15 minutes in market hours) with the entry price range only. The status tag at the top right is still based on the full checklist from the last evening scan. Green on both = price in range <em>and</em> setup clean.</p>`)}
+  <h3 class="faqH">Score and list</h3>
+  ${q("How is the score out of 100 worked out?",`<ul class="plain"><li><strong>Company strength 25:</strong> return on equity, growth, debt, margins, cash flow, pledging</li><li><strong>Technical 25:</strong> trend, moving averages, chart pattern</li><li><strong>Momentum 20:</strong> its 3- and 6-month rise ranked against all Nifty 500 stocks, and how much it beat the Nifty over 3 months</li><li><strong>Liquidity 15:</strong> trading volume</li><li><strong>Risk and market 15:</strong> the Nifty's trend, how jumpy the stock is, distance from its 52-week high, buying/selling pressure</li></ul>
+   <p>When company data is missing, the other 75 points are scaled up to 100 and the card says so. The list shows stocks scoring ${m}+.</p>`)}
+  ${q("Why is a high-scoring stock left out of the Top 20?",`<p>Only large, steady companies are allowed, so a stock is less likely to keep falling: market value over ₹15,000 crore, return on equity 10%+, debt below equity, positive free cash flow, profit not down more than 25%, and about 3 years of trading history. A stock that misses any of these is left out, and the reason is shown at the end of the Top 20 tab or under "Why it is not listed" in Analyze other stocks.</p>`)}
+  ${q("What is the +3% history figure (e.g. touched +3% within 5 sessions 46% of the time)?",`<p>The tool looks back over about 3 years for days when the stock was in a similar state to today, and counts how often it then reached +${t}% within the next 5 trading days, and how often it first fell ${t}%. It is a past frequency, not a promise.</p>`)}
+  ${q("When does a stock move to “Became invalid”?",`<p>Stocks stay on your list day after day until one of these happens: the trend turns down, it fails a company red-flag check, or it drops out of the scan because it no longer qualifies. Then it moves to the Became invalid tab with the reason.</p>`)}
+  <h3 class="faqH">Your rules</h3>
+  ${q("How big is each part, and when do I buy parts 2 and 3?",`<p>When you start a new stock, one part = free cash ÷ 3 at that moment, and that part size stays fixed for that stock. Part 2 is bought when the price is a set gap below your lowest open lot, part 3 another gap below part 2.</p>
+   <p>The gap is chosen per stock from its own past: the tool replays your exact rules over about 3 years at gaps of 3% to 10% and picks the one that earned the most per rupee used. Jumpy stocks usually get wider gaps.</p>`)}
+  ${q("When do I sell?",`<p>Each lot sells on its own at +${t}% of its own buy price, never at a loss. Money from a sold lot is free for any stock. The Positions tab shows every lot's sell price, and Windows alerts when one is reached.</p>`)}
+  <h3 class="faqH">Prices, news and WhatsApp</h3>
+  ${q("Where do prices and news come from? Are they live?",`<p>Prices come from Yahoo Finance (unofficial, can be a few minutes late), refreshed every 15 minutes in market hours and after each close. News comes from Yahoo Finance and Google News. The full scan runs every weekday at 6 PM. Always confirm the price at your broker before placing an order: this tool never places orders.</p>`)}
+  ${q("How does Sto-Bot decide whether news is good or bad?",`<p>It reads the headlines (not the full articles) and looks for words and phrases that usually move prices: "profit jumps", "bags order", "target raised" read as good; "misses estimates", "SEBI notice", "downgrade", "NPA rises" read as bad. A serious headline (probe, penalty, default) always makes the overall verdict bad. It shows how news usually lands, not what the price will do. It runs on your laptop with no AI service.</p>`)}
+  ${q("What are 50 EMA, 200 EMA, ATH and ATL?",`<p><strong>50 / 200 EMA:</strong> the average price over about 50 and 200 trading days, giving more weight to recent days. Price above both usually means an uptrend. <strong>ATH / ATL:</strong> all-time high and low since Yahoo's history starts (usually around 2000 or listing), adjusted for splits.</p>`)}
+  ${q("How does the WhatsApp message work?",`<p>Nothing is sent by any outside service. At 8:30 AM a Windows notification appears; click it, or press 📲 Send to my WhatsApp, and WhatsApp Desktop opens with the list typed in. You press Send. For groups, pick them in WhatsApp's Send to list. Each card shows: name, buy-zone status, CMP, entry range and score.</p>`)}
+  <p class="soft">This tool gives information, not investment advice. Past behaviour does not guarantee future results.</p>`;
+},
+analyze(){
+  const d=cur(),t=d.target_pct;
+  let h=`<section><h2>Analyze any NSE stock</h2><p class="soft" style="margin:0">Same checks as the Top 20: technical and company score, buy zone, +${t}% level, gap for your next parts, CMP, EMAs, all-time high and low, and news. Stocks you add stay here and are re-checked every evening.</p></section>`;
+  if(!LOCAL&&!PHONE) return h+`<p class="note">Analysing a stock needs live data, so it runs in the Windows app on your laptop (Stock Trader AI). Open it there.</p>`;
+  if(PHONE){h+=`<p class="note">New stocks are analysed in the laptop app; they show up here after it syncs, and are re-checked every evening.</p>`;}
+  if(!PHONE&&!ANA.loaded) loadAnalyzed();
+  if(!PHONE)h+=`<section class="card"><form id="anaF" class="row" style="align-items:flex-end;gap:8px" autocomplete="off">
+   <label for="anaQ" style="flex:1;min-width:220px">NSE symbol or company name<input id="anaQ" list="anaList" placeholder="e.g. PNB, TATAPOWER, Punjab National" ${ANA.busy?"disabled":""}></label>
+   <datalist id="anaList">${Object.keys(d.snapshot||{}).sort().map(x=>`<option value="${esc(x)}">`).join("")}</datalist>
+   <button class="primary" ${ANA.busy?"disabled":""}>${ANA.busy?"Analysing "+esc(ANA.busy)+"…"+(ANA.ready?"":" (about a minute)"):"Analyze"}</button></form>
+   <p class="soft" style="margin:8px 0 0">Live prices, company data and news from Yahoo Finance and Google News. Takes 10–30 seconds${ANA.ready?"":"; the first check today takes about a minute while it downloads stocks to compare with"}.</p>
+   <div role="status" aria-live="polite">${ANA.err?`<p class="note bad" style="margin:8px 0 0">${esc(ANA.err)}</p>`:""}</div></section>`;
+  if(!PHONE&&!ANA.ready) h+=`<p class="soft" style="margin:0 0 10px">Until tonight's 6 PM scan, stocks are compared with about 90 stocks downloaded today instead of the full Nifty 500. <button type="button" id="anaScan" ${ANA.scanning?"disabled":""}>${ANA.scanning?"Full scan running (a few minutes)…":"Run the full scan now"}</button></p>`;
+  if(!ANA.items.length) return h+`<section class="card"><p class="soft">No stocks added yet.</p></section>`;
+  h+=ANA.items.map(r=>{const inTop=d.top.find(x=>x.symbol===r.symbol);
+    const notes=[],minS=d.min_score||80,reasons=[];
+    if(!inTop){(r.vetoes||[]).forEach(v=>reasons.push("Fails a hard check: "+v));
+      (r.quality_issues||[]).forEach(q=>reasons.push("Misses the quality bar: "+q));
+      if(r.score<minS)reasons.push(`Score ${r.score.toFixed(0)} is below ${minS}.`);
+      if(/down/i.test(r.state||""))reasons.push("Price trend is down.");
+      if(!reasons.length)reasons.push("It passes the checks, but other stocks ranked higher today.");}
+    if(inTop) notes.push(`<strong class="pos">#${inTop.rank} in today's Top 20.</strong>`);
+    else if((r.vetoes||[]).length) notes.push(`<strong class="neg">Fails a hard check:</strong> ${esc(r.vetoes.join("; "))}`);
+    else if((r.quality_issues||[]).length) notes.push(`<strong class="amb">Not in the Top 20 because it misses the quality bar:</strong> ${esc(r.quality_issues.join("; "))}`);
+    else if(r.score<(d.min_score||80)) notes.push(`<span class="amb">Score is below ${d.min_score||80}, so it is not in the Top 20.</span>`);
+    else notes.push(`<span class="soft">Passes the checks but other stocks ranked higher today.</span>`);
+    const extra=`<p style="margin:8px 0 0">${notes.join(" ")}</p><div class="row" style="gap:6px;margin-top:8px;align-items:center">
+      <span class="soft" style="font-size:13px">Checked ${esc((r.analyzed_at||"").replace("T"," ").slice(0,16))} · prices to ${esc(r.as_of||"")}${r.compare_note?" · "+esc(r.compare_note):""}</span>
+      ${PHONE?"":`<button type="button" data-ana-refresh="${esc(r.symbol)}" ${ANA.busy?"disabled":""}>Check again</button><button type="button" data-ana-remove="${esc(r.symbol)}">Remove</button>`}</div>`;
+    return stockCard({...r,rank:null},t,{extra,own:true,notListed:inTop?null:reasons});}).join("");
+  return h;
+},
+top20(){
+  const d=cur(),v=d.validation||{},t=d.target_pct,age=daysOld(d.as_of),ch=d.changes||{invalid:[],dropped:[],new:[]};
+  const minS=d.min_score||80, list=d.top.filter(r=>r.score>=minS), below=d.top.filter(r=>r.score<minS);
+  const g=list.filter(r=>r.colour==="GREEN").length, y=list.filter(r=>r.colour==="YELLOW").length;
+  let h=`<section><h2>Stocks scoring ${minS}+ that can reach +${t}% within ${d.horizon} sessions</h2>
+  <p class="soft" style="margin:0">Close of ${esc(d.as_of)} · updated each weekday evening from your laptop · ${d.universe_scanned} Nifty 500 stocks scanned · Nifty: ${esc(d.regime)} · data: Yahoo Finance and Google News (unofficial).</p></section>`;
+  if(scanNote) h+=`<p class="note">${esc(scanNote)}</p>`;
+  if(age>4) h+=`<p class="note bad"><strong>This list is ${age} days old.</strong> The laptop has not sent a new scan. Check that it was on after 6 PM on a weekday and that "Set up daily scan" was run once.</p>`;
+  if(d.regime==="bearish") h+=`<p class="note bad"><strong>NO TRADE.</strong> The Nifty is in a downtrend by this tool's rules. The list is for reference only.</p>`;
+  h+=d.quality_on?`<p class="note good">Only large, profitable, low-debt companies listed for about 3 years or more are included (market value over ₹15,000 crore, return on equity 10%+, debt below equity, positive cash flow). ${(d.quality_rejected||[]).length?`${d.quality_rejected.length} high scorers were left out for failing this; see the end of the page.`:""} This lowers the chance of a stock that never recovers. It cannot rule it out.</p>`
+    :`<p class="note">This list is from before the quality filter was added. From the next scan, only large, profitable, low-debt companies will appear.</p>`;
+  if(d.previous_as_of){
+    h+=`<section class="card"><h2>Changes since ${esc(d.previous_as_of)}</h2>`;
+    h+=ch.invalid.length?`<h3 class="neg">No longer valid</h3><ul class="plain">${ch.invalid.map(x=>`<li><strong>${esc(x.symbol)}</strong> (was #${x.prev_rank}): ${esc(x.reason)}${held(B).includes(x.symbol)?" <strong>You hold this stock.</strong>":""}</li>`).join("")}</ul>`:`<p class="pos" style="margin:0 0 6px">No stock from the previous list became invalid.</p>`;
+    if(ch.dropped.length) h+=`<h3 style="margin-top:10px">Dropped out, still valid</h3><p class="soft" style="margin:0">${ch.dropped.map(x=>esc(x.symbol)+" (was #"+x.prev_rank+")").join(", ")}</p>`;
+    h+=`<p class="soft" style="margin:8px 0 0">New in the list: ${esc(ch.new.join(", ")||"none")}</p></section>`;
+  }
+  h+=`<p class="note">${g?`<strong>${g} in the buy zone</strong> (every entry check passed).`:"None is in the buy zone today."} ${y?y+" close to it.":""} Read the news under each stock before buying. Confirm every price at your broker.</p>`;
+  const card=r=>stockCard(r,t);
+  const fc=(grp,k,l)=>{const on=FLT[grp].includes(k),n=d.top.filter(r=>(grp==="zone"?zoneKey(r):scoreKey(r))===k).length;
+    return `<button type="button" class="fchip${on?" on":""}" aria-pressed="${on}" data-flt="${grp}" data-val="${k}">${on?"✓ ":""}${esc(l)} <span class="cnt">${n}</span></button>`;};
+  const shown=d.top.filter(passFlt), fl=list.filter(passFlt), fb=below.filter(passFlt), anyF=FLT.zone.length||FLT.score.length;
+  h+=`<section class="card filters" aria-label="Filter the list"><div class="fgroup" role="group" aria-label="Buy zone"><span class="flabel">Buy zone</span>${ZONE_CH.map(([k,l])=>fc("zone",k,l)).join("")}</div>
+   <div class="fgroup" role="group" aria-label="Score"><span class="flabel">Score</span>${SCORE_CH.map(([k,l])=>fc("score",k,l)).join("")}</div>
+   <div class="row" style="align-items:center;justify-content:space-between;gap:8px;margin-top:6px"><span class="soft" role="status">Showing ${shown.length} of ${d.top.length}${anyF?" · pick several in a row to combine them":""}</span>
+   ${anyF?'<button type="button" data-flt="clear">Clear filters</button>':""}</div>
+   <div class="row" style="gap:6px;margin-top:8px"><button type="button" data-dl="csv">⬇ Download table (Excel CSV)</button>${anyF?'<button type="button" data-dl="csvf">⬇ Download filtered rows</button>':""}
+   ${LOCAL?'<button type="button" data-wa-open="1">📲 Send to my WhatsApp</button><a class="btn" href="/download/report.html" download>⬇ Full report (HTML)</a><a class="btn" href="/download/performance.csv" download>⬇ Performance (CSV)</a>':""}</div></section>`;
+  h+=LOCAL?waChooser():"";
+  h+=fl.length?fl.map(card).join(""):`<section class="card"><p>${list.length?"No stock matches these filters.":`No stock scores ${minS} or more today. Holding cash is a valid choice.`}</p></section>`;
+  if(fb.length) h+=`<details class="card" ${FLT.score.includes("lt80")?"open":""}><summary>${fb.length} more from this list score below ${minS}</summary>${fb.map(card).join("")}</details>`;
+  const still=(d.tracked||[]).filter(x=>!d.top.some(r=>r.symbol===x.symbol));
+  if(still.length){const pc2=v=>v==null?"–":`<span class="${v>0?"pos":v<0?"neg":""}">${v>0?"+":""}${Number(v).toFixed(2)}%</span>`;
+    h+=`<section class="card"><h2>Still on your list from earlier days</h2><p class="soft" style="margin:0 0 8px">Not in today's top 20, but still valid, so they stay until they fail a check.</p>
+    <div class="scroll"><table><thead><tr><th>Stock</th><th>Listed</th><th class="r">Listed at</th><th class="r">Close</th><th class="r">Since listed</th><th class="r">Best</th><th>+${t}% hit</th></tr></thead><tbody>
+    ${still.map(x=>`<tr><td><strong>${esc(x.symbol)}</strong>${held(B).includes(x.symbol)?' <span class="amb">held</span>':""}</td><td>${esc(x.added)}</td><td class="r">${Number(x.added_close).toFixed(2)}</td><td class="r">${x.close!=null?Number(x.close).toFixed(2):"–"}</td><td class="r">${pc2(x.since_pct)}</td><td class="r">${pc2(x.best_pct)}</td><td>${x.hit_date?'<span class="pos">'+esc(x.hit_date)+"</span>":"–"}</td></tr>`).join("")}</tbody></table></div></section>`;}
+  h+=stepSection(d);
+  if(v.test_dates) h+=`<section class="card"><h2>How the list behaved over the past year</h2><p class="soft">The same ranking applied on ${v.test_dates} past dates (${esc(v.from)} to ${esc(v.to)}), using only data available on each date.</p>
+  <div class="scroll"><table><tbody>
+  <tr><td>Picks that touched +${t}% within 5 sessions</td><td class="r">${v.picks_hit_pct}%</td></tr><tr><td>All eligible stocks</td><td class="r">${v.universe_hit_pct}%</td></tr>
+  <tr><td>Picks that touched −${t}% (your next part would be bought)</td><td class="r">${v.picks_fell_3pct_pct}%</td></tr>
+  <tr><td>Average 5-session change: picks / all stocks</td><td class="r">${v.picks_avg_5d_return_pct}% / ${v.universe_avg_5d_return_pct}%</td></tr></tbody></table></div>
+  <p class="soft">${esc(v.note)}</p></section>`;
+  const rej=(d.quality_rejected||[]).concat((d.vetoed||[]).map(x=>({symbol:x.symbol,reasons:x.reasons})));
+  if(rej.length) h+=`<section class="card"><h2>Left out for quality or fundamental reasons</h2><ul class="plain">${rej.map(x=>`<li>${esc(x.symbol)}${x.score?` (score ${x.score.toFixed(0)})`:""}: ${esc(x.reasons.join("; "))}</li>`).join("")}</ul></section>`;
+  return h;
+},
+perf(){
+  const d=cur(),days=Object.keys(d.perf_days||{}).sort().reverse(),weeks=Object.keys(d.perf_weeks||{}).sort().reverse();
+  if(!days.length) return `<section class="card"><h2>Performance</h2><p>Daily and weekly tables start with the next scan (weekdays at 6 PM). From then on every listed stock is followed until it becomes invalid.</p></section>`;
+  const view=PERF.view, near=PERF.near;
+  const chip=(k,v,l)=>`<button type="button" class="${PERF[k]===v?"primary":""}" data-perf="${k}" data-val="${esc(String(v))}">${esc(l)}</button>`;
+  let h=`<section><h2>How the listed stocks performed</h2><div class="row" style="gap:6px;margin-bottom:8px">${chip("view","day","Daily")}${chip("view","week","Weekly")}
+    <button type="button" class="${near?"primary":""}" data-perf="near" data-val="${near?"":"1"}">${near?"✓ ":""}Near entry zone only</button></div>`;
+  const keep=r=>!near||["GREEN","YELLOW"].includes(r.added_colour);
+  const pc2=v=>v==null?"–":`<span class="${v>0?"pos":v<0?"neg":""}">${v>0?"+":""}${Number(v).toFixed(2)}%</span>`;
+  const read=c=>c==="GREEN"?'<span class="pos">In zone</span>':c==="YELLOW"?'<span class="amb">Near zone</span>':'<span class="soft">Not in zone</span>';
+  if(view==="day"){
+    const day=PERF.day&&d.perf_days[PERF.day]?PERF.day:days[0],rows=(d.perf_days[day]||[]).filter(keep);
+    const hit=rows.filter(r=>r.hit_date).length,neg=rows.filter(r=>r.minus_date).length,inv=rows.filter(r=>r.status==="invalid").length;
+    h+=`<div class="row" style="gap:6px;margin-bottom:8px">${days.map(x=>chip("day",x,x)).join("")}</div></section>
+    <div class="tiles">${tile("Stocks followed",rows.length)}${tile(`Touched +${d.target_pct}% since listed`,`${hit} (${rows.length?Math.round(100*hit/rows.length):0}%)`,"g")}${tile(`Touched −${d.target_pct}%`,`${neg} (${rows.length?Math.round(100*neg/rows.length):0}%)`,"r")}${tile("Became invalid this day",inv,inv?"r":"")}</div>
+    <section class="card"><h2>Close of ${esc(day)}</h2><div class="scroll"><table><thead><tr><th>Stock</th><th>Listed</th><th>Reading when listed</th><th class="r">Listed at</th><th class="r">Close</th><th class="r">Day</th><th class="r">Since listed</th><th class="r">Best</th><th class="r">Worst</th><th>+${d.target_pct}% hit</th><th>Status</th></tr></thead><tbody>
+    ${rows.sort((a,b)=>(b.since_pct??-99)-(a.since_pct??-99)).map(r=>`<tr><td><strong>${esc(r.symbol)}</strong>${r.rank_today?` <span class="soft">#${r.rank_today}</span>`:""}</td><td>${esc(r.added)}</td><td>${read(r.added_colour)}</td><td class="r">${r.added_close!=null?Number(r.added_close).toFixed(2):"–"}</td><td class="r">${r.close!=null?Number(r.close).toFixed(2):"–"}</td><td class="r">${pc2(r.day_pct)}</td><td class="r">${pc2(r.since_pct)}</td><td class="r">${pc2(r.best_pct)}</td><td class="r">${pc2(r.worst_pct)}</td><td>${r.hit_date?'<span class="pos">'+esc(r.hit_date)+"</span>":"–"}</td><td>${r.status==="invalid"?'<span class="neg">Invalid</span>':r.warning?'<span class="amb">Warning</span>':'<span class="pos">Valid</span>'}</td></tr>`).join("")}</tbody></table></div>
+    <p class="soft" style="margin:8px 0 0">"Since listed" compares with the close on the day the stock first appeared. Best and worst use the day's highs and lows after listing. "#n" is its rank in today's top list.</p></section>`;
+  } else {
+    const wk=PERF.week&&d.perf_weeks[PERF.week]?PERF.week:weeks[0],W=d.perf_weeks[wk],rows=(W.rows||[]).filter(keep);
+    const up=rows.filter(r=>r.touched_up).length,dn=rows.filter(r=>r.touched_down).length,avg=rows.length?rows.reduce((a,r)=>a+(r.week_pct||0),0)/rows.length:0;
+    h+=`<div class="row" style="gap:6px;margin-bottom:8px">${weeks.map(x=>chip("week",x,d.perf_weeks[x].from+" week")).join("")}</div></section>
+    <div class="tiles">${tile("Stocks followed",rows.length)}${tile(`Touched +${d.target_pct}% this week`,`${up} (${rows.length?Math.round(100*up/rows.length):0}%)`,"g")}${tile(`Touched −${d.target_pct}%`,`${dn}`,"r")}${tile("Average change",pc2(r2(avg)),avg>=0?"g":"r")}</div>
+    <section class="card"><h2>Week of ${esc(W.from)} (to ${esc(W.to)})</h2><div class="scroll"><table><thead><tr><th>Stock</th><th>Reading when listed</th><th class="r">From</th><th class="r">Close</th><th class="r">Week</th><th class="r">Week high</th><th class="r">Week low</th><th>+${d.target_pct}%</th><th>−${d.target_pct}%</th><th>Status</th></tr></thead><tbody>
+    ${rows.sort((a,b)=>(b.week_pct??-99)-(a.week_pct??-99)).map(r=>`<tr><td><strong>${esc(r.symbol)}</strong></td><td>${read(r.added_colour)}</td><td class="r">${Number(r.ref).toFixed(2)} <span class="soft">${esc(r.ref_from)}</span></td><td class="r">${Number(r.close).toFixed(2)}</td><td class="r">${pc2(r.week_pct)}</td><td class="r">${pc2(r.high_pct)}</td><td class="r">${pc2(r.low_pct)}</td><td>${r.touched_up?'<span class="pos">Yes</span>':"No"}</td><td>${r.touched_down?'<span class="neg">Yes</span>':"No"}</td><td>${r.status==="invalid"?'<span class="neg" title="'+esc(r.reason||"")+'">Invalid</span>':'<span class="pos">Valid</span>'}</td></tr>`).join("")}</tbody></table></div>
+    <p class="soft" style="margin:8px 0 0">Each stock is measured from last week's close, or from its listing close if it was listed this week. The current week fills in each evening.</p></section>`;
+  }
+  return h;
+},
+invalid(){
+  const d=cur(),L=d.invalid_list||[];
+  if(!L.length) return `<section class="card"><h2>Became invalid</h2><p>No tracked stock has become invalid yet. Stocks move here from the list on the evening they fail a check, with the reason.</p></section>`;
+  const pc2=v=>v==null?"–":`<span class="${v>0?"pos":v<0?"neg":""}">${v>0?"+":""}${Number(v).toFixed(2)}%</span>`;
+  const hit=L.filter(x=>x.hit_date).length;
+  return `<section><h2>Became invalid</h2><p class="soft" style="margin:0">Stocks are removed from the list only when they fail a check. Of these ${L.length}, ${hit} had touched +${d.target_pct}% at some point before that.</p></section>
+  <section class="card"><div class="scroll"><table><thead><tr><th>Stock</th><th>Listed</th><th>Removed</th><th>Reason</th><th class="r">Listed at</th><th class="r">Close then</th><th class="r">Result</th><th class="r">Best while listed</th><th>+${d.target_pct}% hit</th></tr></thead><tbody>
+  ${L.map(x=>`<tr><td><strong>${esc(x.symbol)}</strong>${held(B).includes(x.symbol)?' <span class="amb">you hold this</span>':""}</td><td>${esc(x.added)}</td><td>${esc(x.removed)}</td><td style="white-space:normal;min-width:220px">${esc(x.reason)}</td><td class="r">${x.added_close!=null?Number(x.added_close).toFixed(2):"–"}</td><td class="r">${x.close!=null?Number(x.close).toFixed(2):"–"}</td><td class="r">${pc2(x.since_pct)}</td><td class="r">${pc2(x.best_pct)}</td><td>${x.hit_date?'<span class="pos">'+esc(x.hit_date)+"</span>":"–"}</td></tr>`).join("")}</tbody></table></div></section>`;
+},
+book(){
+  const s=B.settings, hs=held(B), dd=drawdownPct(B), un=unrealized(B);
+  let h=`<section aria-labelledby="sumH"><h2 id="sumH">Portfolio</h2><div class="tiles">
+   ${tile("Portfolio value",inr(equity(B)),"v")}${tile("Unrealized P&L",sgn(un),un>=0?"g":"r")}${tile("Realized profit (net)",sgn(B.realized),B.realized>=0?"g":"r")}
+   ${tile("Invested",inr(invested(B)))}${tile("Free cash",inr(B.cash))}${tile("Next new stock's part",inr(newPart(B)),"y")}
+   ${tile("Total capital",inr(s.capital))}${tile("Drawdown",dd.toFixed(2)+"%",dd>5?"r":"")}${tile("Charges paid",inr(B.charges))}</div></section>`;
+  if(dd>=s.maxDrawdownPct) h+=`<p class="note bad"><strong>Fresh buying is blocked.</strong> Drawdown ${dd}% has reached your ${s.maxDrawdownPct}% limit.</p>`;
+  h+=`<p class="note info">Your rules: a new stock gets free cash ÷ 3 per part · each stock has its own gap for the next part, chosen from its own past · every lot sells only at +${s.targetPct}% of its own price · money from a sold lot is free for any stock. ${LOCAL?"Prices refresh every 5 minutes while this window is open in market hours (or tap Refresh prices), and from each evening's close.":"Prices update from your laptop a few times a day and from each evening's close."} Record trades with the chat button. Nothing here places an order.</p>`;
+  if(!hs.length){
+    h+=`<section class="card"><h2>No open positions</h2><p>Holding cash is a valid position. When you buy, record it under <a href="#buy">Add buy</a>, or tell Claude the stock, price and quantity.</p></section>`;
+    return h;
+  }
+  for(const sym of hs){
+    const ls=lotsOf(B,sym).sort((a,b)=>a.lotNo-b.lotNo), px=B.prices[sym], p=px?px.p:ls[0].buyPrice, rr=riskReview(B,sym), last=lastLot(B,sym), n=nextLotNo(B,sym);
+    const gap=stepFor(B,sym), inv=invalidity(sym), canAdd=n<=Math.min(s.maxTranches,3)&&!B.blocked[sym]&&!(inv&&inv.hard);
+    const left=Math.min(s.maxTranches,3)-ls.length, entries=[];let ref=last.buyPrice;
+    for(let k=0;k<left;k++){ref=r2(ref*(1-gap/100));entries.push(ref);}
+    const zone=canAdd&&entries.length&&p<=entries[0];
+    const inv$=ls.reduce((a,l)=>a+l.buyPrice*l.qty,0), u=r2(ls.reduce((a,l)=>a+(p-l.buyPrice)*l.qty,0)),
+      net=r2(ls.reduce((a,l)=>a+(p-l.buyPrice)*l.qty-l.buyCh-legCharges("SELL",p,l.qty,s).total,0));
+    /* price ladder: targets, buys, next entries and now, high to low */
+    const pts=[...ls.map(l=>({v:l.target,c:"t",t:`Lot ${l.lotNo} target (sell ${l.qty})`})),...ls.map(l=>({v:l.buyPrice,c:"b",t:`Lot ${l.lotNo} bought`})),
+      ...(canAdd?entries.map((e,i)=>({v:e,c:"e",t:`Buy lot ${n+i} at or below (part ${inr(partFor(B,sym))})`})):[]),{v:p,c:"n",t:"Now"}].sort((x,y)=>y.v-x.v);
+    const lo=Math.min(...pts.map(x=>x.v))*0.995, hi=Math.max(...pts.map(x=>x.v))*1.005, at=v=>(100*(v-lo)/(hi-lo)).toFixed(1);
+    h+=`<section class="card" aria-labelledby="h-${esc(sym)}">
+     <div class="row" style="align-items:center;justify-content:space-between;gap:6px">
+      <div><h2 id="h-${esc(sym)}" style="margin:0">${esc(sym)}</h2><span class="soft" style="font-size:13px">${ls.length} of 3 parts · part ${inr(partFor(B,sym))} · gap ${gap}%</span></div>
+      <div style="text-align:right"><div class="big">${p.toFixed(2)}</div><div style="font-size:13px">${pc(dayChg(sym))} <span class="soft">${px?(px.src==="live"?"live "+esc(px.ts.slice(11,16)):px.src==="scan"?"close "+esc(px.ts):"entered "+esc(px.ts)):""}</span></div></div></div>
+     <div class="tiles" style="margin-top:10px">${tile("Invested",inr(inv$))}${tile("P&L now",sgn(u),u>=0?"g":"r")}${tile("If sold now, net",sgn(net),net>=0?"g":"r")}</div>
+     ${inv?`<p class="note ${inv.hard?"bad":""}" style="margin-top:10px"><strong>${inv.hard?"INVALID":"Weakening"}:</strong> ${esc(inv.why)} (scan of ${esc(cur().as_of)}). ${inv.hard?"Do not add more. Your open lots stay until their own targets, so this money may be tied up for a while.":"Be careful before adding a part."}</p>`:""}
+     ${rr?`<p class="note bad" style="margin-top:10px"><strong>Capital tied up.</strong> ${esc(rr)} Under your rule these lots are held until their targets.</p>`:""}
+     ${B.blocked[sym]?`<p class="note bad" style="margin-top:10px">Buying blocked: ${esc(B.blocked[sym])} <button data-unblock="${esc(sym)}">Remove block</button></p>`:""}
+     ${zone?`<p class="note good" style="margin-top:10px"><strong>Lot ${n} entry reached.</strong> ${p.toFixed(2)} is at or below ${entries[0].toFixed(2)} (${gap}% under your lowest lot at ${last.buyPrice.toFixed(2)}). Under your rule you would add one part of ${inr(partFor(B,sym))}${deployable(B)<partFor(B,sym)?` (only ${inr(deployable(B))} is free)`:""}.</p>`:""}
+     <div class="bar" role="img" aria-label="Price ladder for ${esc(sym)}; the same levels are listed below">${pts.map(x=>`<i class="${x.c}" style="left:${at(x.v)}%" title="${esc(x.t)} ${x.v.toFixed(2)}"></i>`).join("")}</div>
+     <ul class="ladder" aria-label="Price ladder, highest first">${pts.map(x=>`<li class="${x.c}"><span>${esc(x.t)}</span><span class="num">${x.v.toFixed(2)}${x.c==="n"?"":` <span class="soft">${(x.v>p?"+":"")+(100*(x.v/p-1)).toFixed(1)}%</span>`}</span></li>`).join("")}</ul>
+     ${!canAdd&&left===0?`<p class="soft" style="margin:8px 0 0">All three parts are in. No more averaging.</p>`:""}
+     ${ls.map(l=>{const st=STATUS[l.status],est=r2((p-l.buyPrice)*l.qty-l.buyCh-legCharges("SELL",p,l.qty,s).total);
+       return `<div class="lot"><div class="head"><h3 style="margin:0">Lot ${l.lotNo}</h3><span class="pill ${st[0]}">${st[1]}</span><span class="soft">bought ${esc(l.buyDate)} · ${l.qty} @ ${l.buyPrice.toFixed(2)}</span></div>
+       <dl><div><dt>Target</dt><dd>${l.target.toFixed(2)}</dd></div><div><dt>To target</dt><dd>${p>=l.target?'<span class="pos">reached</span>':(100*(l.target/p-1)).toFixed(2)+"% away"}</dd></div>
+       <div><dt>Net if sold now</dt><dd>${sgn(est)}</dd></div></dl>
+       ${l.status==="TARGET_REACHED"?`<p class="note good" style="margin-top:4px">Lot ${l.lotNo} has reached its target. Sell this lot only (${l.qty} shares); the other lots stay open.</p>`:""}
+       <details><summary>Record the sale of lot ${l.lotNo}</summary>
+       <form class="row" data-sell="${l.id}" style="margin-top:6px"><label for="sp-${l.id}">Executed sale price<input id="sp-${l.id}" name="p" type="number" inputmode="decimal" step="0.05" min="0.05" value="${l.target.toFixed(2)}" required></label>
+       <button style="flex:none">Record sale</button>
+       ${l.status!=="EXIT_SUBMITTED"?`<button type="button" data-sub="${l.id}" style="flex:none">Exit order placed</button>`:""}</form></details></div>`;}).join("")}
+     <details style="margin-top:8px"><summary>Gap for the next parts: ${gap}%</summary>
+      <p class="soft" style="margin:6px 0">${esc(stepWhy(sym)||"Set when you first bought this stock.")}</p>
+      <form class="row" data-gap="${esc(sym)}"><label for="gp-${esc(sym)}">Gap below your lowest open lot (%)<input id="gp-${esc(sym)}" name="g" type="number" inputmode="decimal" step="0.5" min="1" max="20" value="${gap}" required></label><button style="flex:none">Save gap</button></form></details>
+     <details style="margin-top:4px"><summary>Type a price yourself</summary>
+      <form class="row" data-price="${esc(sym)}" style="margin-top:6px"><label for="px-${esc(sym)}">Current price<input id="px-${esc(sym)}" name="p" type="number" inputmode="decimal" step="0.05" min="0.05" value="${p}" required></label>
+      <button class="primary" style="flex:none">Update price</button></form></details>
+    </section>`;
+  }
+  return h;
+},
+buy(){
+  return `<section class="card"><h2>Record an executed purchase</h2>
+  <form id="buyF" class="stack"><div class="row">
+   <label for="bs">Symbol<input id="bs" name="s" autocapitalize="characters" autocomplete="off" required></label>
+   <label for="bp">Fill price<input id="bp" name="p" type="number" inputmode="decimal" step="0.05" min="0.05" required></label>
+   <label for="bq">Shares (blank = one tranche)<input id="bq" name="q" type="number" inputmode="numeric" min="1"></label></div>
+   <div id="buyCheck" role="status" aria-live="polite"><p class="soft">Enter a symbol and price to check it against your rules.</p></div>
+   <fieldset id="reassess" hidden style="border:1px solid var(--rule);border-radius:8px;padding:10px 12px"><legend>Reassessment before averaging down</legend>
+    <p class="soft" style="margin:0">A lower price alone is never a reason to buy more. Tick each line only if it is true.</p>
+    <div class="checks">${REASSESS.map((t,i)=>`<label for="ra${i}"><input type="checkbox" id="ra${i}" data-ra> <span>${esc(t)}</span></label>`).join("")}</div></fieldset>
+   <button class="primary" id="buyBtn" disabled>Record buy</button></form></section>`;
+},
+calc(){
+  const s=B.settings;
+  return `<section class="card"><h2>Profit target calculator</h2><form id="calcF" class="row">
+   <label for="cp">Purchase price<input id="cp" name="p" type="number" inputmode="decimal" step="0.05" min="0.05" required></label>
+   <label for="ca">Amount (₹)<input id="ca" name="a" type="number" inputmode="decimal" value="${newPart(B)||30000}" required></label>
+   <label for="ct">Target<select id="ct" name="t">${[1,2,3,4,5].map(x=>`<option value="${x}" ${x==s.targetPct?"selected":""}>${x}%</option>`).join("")}</select></label>
+   <button class="primary" style="flex:none">Calculate</button></form>
+   <div id="calcOut" role="status" aria-live="polite" style="margin-top:12px"><p class="soft">A 3% rise in price is not a 3% net profit. This shows what is left after every charge.</p></div></section>`;
+},
+ledger(){
+  const closed=B.lots.filter(l=>l.status==="CLOSED").slice().reverse();
+  return `<section class="card"><h2>Closed lots</h2>${closed.length?`<div class="scroll"><table><thead><tr><th>Stock</th><th>Lot</th><th>Bought</th><th class="r">Buy</th><th>Sold</th><th class="r">Exit</th><th class="r">Shares</th><th class="r">Charges</th><th class="r">Net profit</th></tr></thead><tbody>
+   ${closed.map(l=>`<tr><td>${esc(l.symbol)}</td><td>${l.lotNo}</td><td>${esc(l.buyDate)}</td><td class="r">${l.buyPrice.toFixed(2)}</td><td>${esc(l.exitDate)}</td><td class="r">${l.exitPrice.toFixed(2)}</td><td class="r">${l.qty}</td><td class="r">${inr(l.buyCh+l.sellCh)}</td><td class="r">${sgn(l.net)}</td></tr>`).join("")}</tbody></table></div>`:'<p class="soft">No lot has been closed yet.</p>'}</section>
+  <section class="card"><h2>Every transaction</h2>${B.tx.length?`<div class="scroll"><table><thead><tr><th>Date</th><th>Type</th><th>Stock</th><th>Lot</th><th class="r">Shares</th><th class="r">Price</th><th class="r">Charges</th><th class="r">Cash after</th><th>Note</th></tr></thead><tbody>
+   ${B.tx.map(t=>`<tr><td>${esc(t.ts)}</td><td>${esc(t.kind)}</td><td>${esc(t.symbol||"")}</td><td>${t.lotNo||""}</td><td class="r">${t.qty||""}</td><td class="r">${t.price?t.price.toFixed(2):""}</td><td class="r">${t.charges?inr(t.charges):""}</td><td class="r">${inr(t.cash)}</td><td>${esc(t.note)}</td></tr>`).join("")}</tbody></table></div>`:'<p class="soft">Nothing recorded yet.</p>'}</section>`;
+},
+setup(){
+  const s=B.settings, f=(id,label,val,step)=>`<label for="s-${id}">${label}<input id="s-${id}" name="${id}" type="number" inputmode="decimal" step="${step||"any"}" value="${val}" required></label>`;
+  return `${PHONE?`<section class="card"><h2>Connect to your laptop's data</h2>
+   ${GH?`<p class="pos" style="margin:0 0 8px"><strong>Connected</strong> to github.com/${esc(GH.owner)}/${esc(GH.repo)}.</p>
+     <div class="row"><button type="button" id="ghSyncNow">↻ Sync now</button><button type="button" class="danger" id="ghOff">Disconnect this phone</button></div>`
+   :`<p>Enter the same GitHub username and access key you saved on the laptop (Setup → Phone app). They are stored only on this phone.</p>
+     <form id="ghF" class="stack" autocomplete="off"><div class="row">
+     <label for="ghOwner">GitHub username<input id="ghOwner" autocapitalize="none" spellcheck="false" required></label>
+     <label for="ghRepo">Data repository<input id="ghRepo" value="stock-trader-data" autocapitalize="none" spellcheck="false" required></label></div>
+     <label for="ghTok">Access key (starts with github_pat_)<input id="ghTok" type="password" autocapitalize="none" spellcheck="false" required></label>
+     <div><button class="primary">Connect</button></div><p id="ghOut" role="status" aria-live="polite" class="soft"></p></form>`}
+   <p class="soft" style="margin:8px 0 0">To install: Chrome menu ⋮ → <strong>Add to Home screen</strong> (or Install app).</p></section>`:""}
+  <section class="card"><h2>Capital and rules</h2><form id="setF" class="stack"><div class="row">
+   ${f("capital","Total capital (₹)",s.capital)}${f("targetPct","Sell each lot at (+%)",s.targetPct,"0.5")}
+   ${f("stepPct","Add the next part when price is this % below your lowest open lot",s.stepPct,"0.5")}
+   ${f("maxPositions","Stocks held at once",s.maxPositions,"1")}${f("reservePct","Emergency cash reserve (%)",s.reservePct)}
+   ${f("maxDrawdownPct","Drawdown that blocks new buying (%)",s.maxDrawdownPct)}${f("riskExitPct","Warn when price is this % below lowest lot (all 3 parts used)",s.riskExitPct)}</div>
+   <p style="margin:0">A new stock's part = free cash ÷ 3 at the time of its first buy (now <strong class="num">${inr(newPart(B))}</strong>). Its later lots use the same part. Three parts per stock is fixed.</p>
+   <h3>Broker charges (defaults are FYERS delivery, checked Nov 2026)</h3><div class="row">
+   ${f("brokeragePct","Brokerage (% of order)",s.brokeragePct)}${f("brokerageCap","Brokerage cap per order (₹)",s.brokerageCap)}${f("dpCharge","DP charge per sale, before GST (₹)",s.dpCharge)}${f("slippageBps","Slippage estimate (basis points)",s.slippageBps)}</div>
+   <p class="soft" style="margin:0">Three tranches per stock is a fixed ceiling and cannot be raised. Compare the charges with your first contract note and correct them here.</p>
+   <div><button class="primary">Save</button></div></form></section>
+  ${LOCAL?`<section class="card"><h2>Phone app</h2>
+   <p>Use this app on your Android phone anywhere. The laptop keeps a copy of your list, prices and positions in a <strong>private</strong> repository in your own GitHub account; the phone reads it and saves trades back. No Claude and no other service.</p>
+   <details><summary>One-time GitHub steps (about 3 minutes)</summary><ol style="padding-left:20px">
+    <li>On github.com, click <strong>+ → New repository</strong>: name <code>stock-trader-data</code>, choose <strong>Private</strong>, Create.</li>
+    <li>Again <strong>+ → New repository</strong>: name <code>stock-trader-app</code>, choose <strong>Public</strong> (it holds only the app page, no data), Create.</li>
+    <li>Open <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">github.com/settings/personal-access-tokens/new</a>: name it "Stock Trader AI", expiry up to 1 year, <strong>Only select repositories</strong> → pick both. Under <strong>Repository permissions</strong> set <strong>Contents: Read and write</strong> and <strong>Pages: Read and write</strong>. Generate, then copy the key.</li>
+    <li>Paste your username and the key below, Save, then press <strong>Publish phone app</strong>.</li></ol></details>
+   <div class="row" style="margin-top:8px"><label for="clOwner">GitHub username<input id="clOwner" autocapitalize="none" spellcheck="false"></label>
+   <label for="clTok">Access key<input id="clTok" type="password" autocomplete="off" placeholder="github_pat_…"></label></div>
+   <div class="row"><label for="clData">Private data repository<input id="clData" value="stock-trader-data"></label><label for="clApp">Public app repository<input id="clApp" value="stock-trader-app"></label></div>
+   <div class="row" style="margin-top:10px"><button type="button" class="primary" id="clSave">Save</button><button type="button" id="clPub">📱 Publish phone app</button><button type="button" id="clSync">↻ Sync now</button></div>
+   <p id="clOut" role="status" aria-live="polite" class="soft"></p><div id="clUrl"></div></section>`:""}
+  ${LOCAL?`<section class="card"><h2>Morning list on your WhatsApp</h2>
+   <p>Each weekday at 8:30 AM a Windows notification says today's list is ready. Click <strong>Send to my WhatsApp</strong> (your own chat opens with the list typed in) or <strong>Send to groups or chats</strong> (WhatsApp's Send-to list opens: tick groups or people). Then press <strong>Send</strong> in WhatsApp.</p>
+   <p class="soft">No outside service is used: the app uses WhatsApp's own click-to-chat link, and nothing is sent until you press Enter. Needs WhatsApp Desktop on this laptop (Microsoft Store), signed in to your account.</p>
+   <div class="row"><label for="waPhone">Your own WhatsApp number, with country code<input id="waPhone" type="tel" autocomplete="tel" placeholder="+919876543210"></label></div>
+   <h3 style="margin:14px 0 4px">Other people you send it to</h3>
+   <p class="soft" style="margin:0 0 6px">Optional. For groups you don't need anything here: choose "A group or other chat" when sending.</p>
+   <div id="waRecips"></div><button type="button" id="waAdd">+ Add a person</button>
+   <div class="row" style="margin-top:10px"><button type="button" class="primary" id="waSave">Save</button><button type="button" data-wa-open="1">📲 Send today's list now</button></div>
+   ${waChooser()}
+   <p id="waOut" role="status" aria-live="polite" class="soft"></p></section>`:""}
+  <section class="card"><h2>Backup</h2><p class="soft">Copy this text somewhere safe. To restore or move to another phone, paste it back and choose Restore.</p>
+   <label for="bk">Backup text<textarea id="bk" spellcheck="false">${esc(JSON.stringify(B))}</textarea></label>
+   <div class="row" style="margin-top:10px"><button id="copyBk">Copy backup</button><button id="restoreBk">Restore from this text</button></div>
+   <div id="bkOut" role="status" aria-live="polite"></div></section>
+  <section class="card"><h2>Start over</h2><p class="soft">Erases every lot and transaction in this book.</p>
+   <div class="row"><button class="danger" id="wipe1">Erase the book…</button><button class="danger" id="wipe2" hidden>Yes, erase everything</button><button id="wipe3" hidden>Keep my book</button></div></section>`;
+}};
+
+function refreshBuyCheck(){
+  const f=$("#buyF"); if(!f) return;
+  const sym=f.s.value.trim().toUpperCase(), price=parseFloat(f.p.value), qty=f.q.value?parseInt(f.q.value,10):null, out=$("#buyCheck"), ra=$("#reassess");
+  if(!sym||!(price>0)){out.innerHTML='<p class="soft">Enter a symbol and price to check it against your rules.</p>';ra.hidden=true;$("#buyBtn").disabled=true;return;}
+  const c=checkBuy(B,sym,r2(price),qty), averaging=c.lotNo>1;
+  ra.hidden=!(averaging&&c.allowed);
+  const ticked=!averaging||[...document.querySelectorAll("[data-ra]")].every(x=>x.checked);
+  if(!c.allowed) out.innerHTML=`<div class="note bad"><strong>Blocked by your capital-protection rules.</strong><ul class="plain">${c.reasons.map(r=>`<li>${esc(r)}</li>`).join("")}</ul></div>`;
+  else{const rt=roundTrip(r2(price),c.target,c.qty,B.settings);
+    out.innerHTML=`<div class="note good"><strong>Allowed as lot ${c.lotNo} of ${esc(sym)}.</strong> ${c.lotNo===1?"New stock: part = free cash ÷ 3 = "+inr(c.part)+".":"Its part is "+inr(c.part)+"."} ${c.qty} shares, ${inr(price*c.qty)} plus ${inr(c.ch)} charges. Its own target: <span class="num">${c.target.toFixed(2)}</span>, about ${inr(rt.net)} net (${rt.netPct}%) if reached.
+     ${c.warnings.length?`<br>${esc(c.warnings.join(" "))}`:""}${averaging&&!ticked?"<br>Complete the reassessment below to record this purchase.":""}</div>`;}
+  $("#buyBtn").disabled=!(c.allowed&&ticked);
+}
+main.addEventListener("input",e=>{if(e.target.closest("#buyF"))refreshBuyCheck();});
+main.addEventListener("submit",e=>{
+  e.preventDefault(); const f=e.target;
+  if(f.id==="anaF"){runAnalyze($("#anaQ").value);return;}
+  if(f.id==="ghF"){(async()=>{const g={owner:$("#ghOwner").value.trim().replace(/^@/,""),repo:$("#ghRepo").value.trim(),token:$("#ghTok").value.trim()};
+    $("#ghOut").textContent="Checking…";GH=g;
+    try{const r=await fetch(`https://api.github.com/repos/${encodeURIComponent(g.owner)}/${encodeURIComponent(g.repo)}`,{headers:ghHeaders(false)});
+      if(r.status===401)throw new Error("GitHub refused the key. Copy it again from GitHub.");
+      if(!r.ok)throw new Error("The key cannot open "+g.owner+"/"+g.repo+". Check the username, the repository name and that the key includes this repository.");
+      localStorage.setItem("sta-gh",JSON.stringify(g));flash={cls:"good",msg:"Connected. Loading your data…"};location.hash="top20";render();await pollPhone();
+      if(B.rev>0&&!ghBookSha)saveGHBook();setInterval(pollPhone,120000);}
+    catch(er){GH=null;$("#ghOut").textContent=er.message||"Could not connect.";}})();return;}
+  try{
+    if(f.dataset.price){setPrice(B,f.dataset.price,parseFloat(f.p.value),today());const hit=B.lots.filter(l=>l.symbol===f.dataset.price&&l.status==="TARGET_REACHED");
+      flash=hit.length?{cls:"good",msg:`${f.dataset.price}: lot ${hit.map(l=>l.lotNo).join(" and lot ")} reached its own target.`}:{cls:"",msg:`${f.dataset.price} price updated.`};persist();render();}
+    else if(f.dataset.gap){const g=parseFloat(f.g.value);if(!(g>=1&&g<=20))throw new Error("The gap must be between 1% and 20%.");
+      B.steps=B.steps||{};B.steps[f.dataset.gap]=g;flash={cls:"good",msg:`${f.dataset.gap}: next parts now ${g}% below your lowest open lot.`};persist();render();}
+    else if(f.dataset.sell){const lot=B.lots.find(x=>x.id===+f.dataset.sell), sp=parseFloat(f.p.value);
+      if(lot&&sp<lot.target&&f.dataset.ok!==String(sp)){f.dataset.ok=String(sp);
+        const msg=sp<lot.buyPrice?`That is below what you paid (${lot.buyPrice.toFixed(2)}). Your rule is to sell only in profit.`:`That is below this lot's own target (${lot.target.toFixed(2)}).`;
+        let w=f.querySelector(".confirm");if(!w){w=document.createElement("p");w.className="note bad confirm";w.setAttribute("role","alert");w.style.flexBasis="100%";f.appendChild(w);}
+        w.textContent=msg+" If this sale really happened at your broker, tap Record sale again.";return;}
+      const l=sell(B,+f.dataset.sell,sp,today(),sp<(lot?lot.target:0)?"BELOW TARGET":"TARGET");B.peak=Math.max(B.peak,equity(B));
+      flash={cls:l.net>=0?"good":"bad",msg:`Lot ${l.lotNo} of ${l.symbol} closed. Net ${l.net>=0?"profit":"loss"} ${inr(Math.abs(l.net))} after charges. Other lots are unchanged.`};persist();render();}
+    else if(f.id==="buyF"){const sym=f.s.value.trim().toUpperCase(),l=buy(B,sym,parseFloat(f.p.value),f.q.value?parseInt(f.q.value,10):null,today(),"");
+      flash={cls:"good",msg:`Recorded lot ${l.lotNo} of ${sym}: ${l.qty} shares at ${l.buyPrice.toFixed(2)}. Its target is ${l.target.toFixed(2)}.`};persist();location.hash="book";if(page()==="book")render();}
+    else if(f.id==="calcF"){const p=parseFloat(f.p.value),qty=Math.floor(parseFloat(f.a.value)/p);
+      if(!(qty>0)){$("#calcOut").innerHTML='<p class="note bad">That amount does not buy one share at this price.</p>';return;}
+      const t=r2(p*(1+(+f.t.value)/100)),r=roundTrip(p,t,qty,B.settings);
+      $("#calcOut").innerHTML=`<div class="tiles">${tile("Target price",t.toFixed(2))}${tile("Shares",qty)}${tile("Gross profit",inr(r.gross)+" ("+r.grossPct+"%)")}${tile("Buy charges",inr(r.buyCharges))}${tile("Sell charges",inr(r.sellCharges))}${tile("Slippage estimate",inr(r.slippage))}${tile("Estimated net profit",sgn(r.net)+" ("+r.netPct+"%)")}</div>`;}
+    else if(f.id==="setF"){const v={};for(const el of f.querySelectorAll("input[type=number]"))v[el.name]=parseFloat(el.value);
+      v.maxLots=30;
+      if(Object.values(v).some(x=>!isFinite(x)||x<0)) throw new Error("Every setting needs a number of zero or more.");
+      if(v.targetPct<0.5||v.targetPct>5) throw new Error("Target per lot must be between 0.5% and 5%.");
+      if(v.reservePct>=100) throw new Error("The reserve must be below 100%.");
+      if(!(v.maxPositions>=1)) throw new Error("Stocks held at once must be at least 1.");
+      setCapital(B,v.capital);B.settings={...B.settings,...v,capital:v.capital,maxTranches:3};flash={cls:"good",msg:"Settings saved."};persist();render();}
+  }catch(err){flash={cls:"bad",msg:err.message};render();}
+});
+main.addEventListener("click",async e=>{
+  const t=e.target;
+  const fb=t.closest&&t.closest("[data-flt]");
+  if(fb){const g=fb.dataset.flt;if(g==="clear"){FLT.zone=[];FLT.score=[];}else{const a=FLT[g],k=fb.dataset.val,i=a.indexOf(k);i<0?a.push(k):a.splice(i,1);}
+    saveFlt();render();const again=g==="clear"?null:document.querySelector(`[data-flt="${g}"][data-val="${fb.dataset.val}"]`);if(again)again.focus();return;}
+  const db=t.closest&&t.closest("[data-dl]");
+  if(db){const d=cur(),rows=db.dataset.dl==="csvf"?d.top.filter(passFlt):d.top;
+    try{await downloadText(`top20_${d.as_of}${db.dataset.dl==="csvf"?"_filtered":""}.csv`,top20Csv(rows),"text/csv");}catch(er){flash={cls:"bad",msg:"Download was blocked here. Use the Windows app."};render();}return;}
+  const ar=t.closest&&t.closest("[data-ana-refresh]");if(ar){runAnalyze(ar.dataset.anaRefresh);return;}
+  const am=t.closest&&t.closest("[data-ana-remove]");
+  if(am){const sym=am.dataset.anaRemove;await fetch("/api/analyze/remove",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({symbol:sym})}).catch(()=>{});
+    ANA.items=ANA.items.filter(x=>x.symbol!==sym);flash={cls:"",msg:sym+" removed from your Analyze list."};render();return;}
+  if(t.id==="anaScan"){await fetch("/api/scan/run",{method:"POST"}).catch(()=>{});ANA.scanning=true;render();
+    const iv=setInterval(async()=>{await loadAnalyzed();if(!ANA.scanning){clearInterval(iv);flash={cls:"good",msg:"Scan finished. You can analyse stocks now."};location.reload();}},20000);return;}
+  if(t.id==="clSave"||t.id==="clPub"||t.id==="clSync"){const out=$("#clOut");
+    if(t.id==="clSave"){const r=await fetch("/api/cloud",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({owner:$("#clOwner").value,token:$("#clTok").value,data_repo:$("#clData").value,app_repo:$("#clApp").value})}).then(x=>x.json()).catch(()=>({ok:false,error:"The app is not responding."}));
+      out.textContent=r.ok?"Saved. Now press Publish phone app.":r.error;if(r.ok)$("#clTok").value="";return;}
+    t.disabled=true;out.textContent=t.id==="clPub"?"Publishing the phone app and uploading your data…":"Syncing…";
+    const r=await fetch(t.id==="clPub"?"/api/cloud/publish":"/api/cloud/sync",{method:"POST"}).then(x=>x.json()).catch(()=>({ok:false,error:"The app is not responding."}));t.disabled=false;
+    if(!r.ok){out.textContent=r.error||"Failed.";return;}
+    out.textContent=t.id==="clPub"?"Published. GitHub takes 1 to 2 minutes to put the page online the first time.":"Synced"+(r.book==="pulled"?" (took newer trades from your phone)":"")+".";
+    if(r.url)showCloudUrl(r.url);return;}
+  if(t.id==="clCopy"){const u=$("#clUrl a").href;try{await navigator.clipboard.writeText(u);t.textContent="Copied";}catch(e){}return;}
+  if(t.id==="ghOff"){if(!confirm("Disconnect this phone? Your data stays on GitHub and the laptop."))return;localStorage.removeItem("sta-gh");GH=null;render();return;}
+  if(t.id==="ghSyncNow"){setSync("Syncing…");await pollPhone();return;}
+  if(t.id==="waAdd"){$("#waRecips").insertAdjacentHTML("beforeend",recipRow({}));const ins=$("#waRecips").querySelectorAll(".rName");ins[ins.length-1].focus();return;}
+  if(t.dataset&&t.dataset.recipDel){t.closest(".recip").remove();$("#waAdd").focus();return;}
+  if(t.id==="waSave"){const recipients=[...document.querySelectorAll("#waRecips .recip")].map(x=>({name:x.querySelector(".rName").value,phone:x.querySelector(".rPhone").value})).filter(x=>x.name.trim()||x.phone.trim());
+    const r=await fetch("/api/whatsapp",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({phone:$("#waPhone").value,recipients})}).then(x=>x.json()).catch(()=>({ok:false,error:"The app is not responding."}));
+    $("#waOut").textContent=r.ok?`Saved${recipients.length?" with "+recipients.length+" other "+(recipients.length>1?"people":"person"):""}. Try Send today's list now.`:r.error;if(r.ok)waCfg();return;}
+  const wo=t.closest&&t.closest("[data-wa-open]");
+  if(wo){await waCfg();WA.show=true;WA.msg="";const keep=page()==="setup"?{phone:$("#waPhone").value}:null;render();
+    if(keep){await fillWa();}const f=document.querySelector("[data-wa-to]");if(f)f.focus();return;}
+  if(t.dataset&&t.dataset.waClose){WA.show=false;render();if(page()==="setup")fillWa();return;}
+  const wt=t.closest&&t.closest("[data-wa-to]");
+  if(wt){const to=wt.dataset.waTo,label=wt.textContent;wt.disabled=true;
+    const r=await fetch("/api/whatsapp/open",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({to})}).then(x=>x.json()).catch(()=>({ok:false,error:"The app is not responding."}));
+    WA.msg=r.ok?(r.mode==="pick"?"WhatsApp's Send to list is open: tick the groups or people and press Send. (If the message is empty, press Ctrl+V: the list is copied too.)":`WhatsApp is open on ${label} with the list typed in: press Send. (If the box is empty, press Ctrl+V: the list is copied too.)`):r.error;
+    const st=wt.closest("section").querySelector("[role=status]");wt.disabled=false;if(st)st.textContent=WA.msg;if(r.ok)wt.textContent="✓ "+label.replace(/^✓ /,"");return;}
+  if(t.dataset&&t.dataset.perf){const k=t.dataset.perf;PERF[k]=k==="near"?!!t.dataset.val:t.dataset.val;render();return;}
+  if(t.dataset.sub){const l=B.lots.find(x=>x.id===+t.dataset.sub);if(l&&l.status!=="CLOSED"){l.status="EXIT_SUBMITTED";flash={cls:"",msg:`Lot ${l.lotNo} marked as exit order placed. Record the sale once it executes.`};persist();render();}}
+  else if(t.dataset.unblock){delete B.blocked[t.dataset.unblock];B.blockAck=B.blockAck||{};B.blockAck[t.dataset.unblock]=cur().as_of;persist();render();}
+  else if(t.id==="copyBk"){try{await navigator.clipboard.writeText($("#bk").value);$("#bkOut").textContent="Backup copied.";}catch(er){$("#bk").select();$("#bkOut").textContent="Copy was not allowed here. The text is selected: copy it by hand.";}}
+  else if(t.id==="restoreBk"){try{const b=JSON.parse($("#bk").value);if(!b||!Array.isArray(b.lots)||!b.settings)throw 0;B=migrate(b);flash={cls:"good",msg:"Book restored from backup."};persist();render();}
+    catch(er){$("#bkOut").textContent="That text is not a valid backup. Paste the whole backup and try again.";}}
+  else if(t.id==="wipe1"){t.hidden=true;$("#wipe2").hidden=false;$("#wipe3").hidden=false;$("#wipe2").focus();}
+  else if(t.id==="wipe3"){render();}
+  else if(t.id==="wipe2"){B=newBook();flash={cls:"",msg:"Book erased."};persist();location.hash="book";if(page()==="book")render();}
+});
+window.addEventListener("hashchange",()=>{render();main.focus();});
+
+/* ===================== Sto-Bot (rule-based, runs in the page, no Claude usage) ===================== */
+const CH={state:null,data:{},acts:{},undo:null,opened:false};
+const fmt=v=>Number(v).toFixed(2);
+const yday=()=>{const d=new Date(today());d.setDate(d.getDate()-1);if(d.getDay()===0)d.setDate(d.getDate()-2);if(d.getDay()===6)d.setDate(d.getDate()-1);return d.toISOString().slice(0,10);};
+function knownSyms(){const d=cur();return [...new Set([...held(B),...d.top.map(r=>r.symbol),...Object.keys(d.snapshot||{})])];}
+function lastPrice(sym){if(B.prices[sym])return B.prices[sym].p;const q=QUOTES&&QUOTES.prices&&QUOTES.prices[sym];if(q)return q[0];
+  const d=cur(),r=d.top.find(x=>x.symbol===sym);if(r)return r.close;const sn=d.snapshot&&d.snapshot[sym];return sn?sn.c:null;}
+function findSym(text){const up=" "+text.toUpperCase().replace(/[^A-Z0-9&\- ]/g," ")+" ",ks=knownSyms();
+  for(const k of ks.sort((a,b)=>b.length-a.length)) if(up.includes(" "+k+" ")) return k;
+  const low=text.toLowerCase(),d=cur();
+  for(const r of d.top){const n=(r.name||"").toLowerCase().split(" ")[0];if(n.length>3&&low.includes(n))return r.symbol;}
+  const m=text.match(/\b([A-Z][A-Z0-9&\-]{1,14})\b/);return m&&!/^(I|BUY|BOUGHT|SOLD|SELL|AT|QTY|LOT|RS|NSE|TODAY)$/.test(m[1])?m[1]:null;}
+function parseNums(text){const t=text.replace(/,/g,"");const out={};
+  let m=t.match(/(?:@|\bat\b|price|rs\.?|₹)\s*([0-9]+(?:\.[0-9]+)?)/i);if(m)out.price=parseFloat(m[1]);
+  m=t.match(/([0-9]+)\s*(?:qty|shares?|nos|quantity|units?)\b/i)||t.match(/(?:qty|quantity)\s*([0-9]+)/i);if(m)out.qty=parseInt(m[1],10);
+  if(out.qty==null){m=t.match(/\b([0-9]+)\s*(?:@|\bat\b)/i);if(m&&parseFloat(m[1])!==out.price)out.qty=parseInt(m[1],10);}
+  m=t.match(/lot\s*([1-3])/i);if(m)out.lot=parseInt(m[1],10);
+  if(/yesterday/i.test(t))out.date=yday();
+  return out;}
+function say(html,chips){const el=document.createElement("div");el.className="msg bot";el.innerHTML=html;$("#log").appendChild(el);setChips(chips||mainChips());$("#log").scrollTop=1e9;}
+function me(text){const el=document.createElement("div");el.className="msg me";el.textContent=text;$("#log").appendChild(el);$("#log").scrollTop=1e9;}
+function setChips(list){CH.acts={};$("#chips").innerHTML=list.map((c,i)=>{CH.acts[i]=c;return `<button type="button" data-chip="${i}" class="${c.go?"go":""}">${esc(c.label)}</button>`;}).join("");}
+function mainChips(){const c=[{label:"I bought a stock",act:()=>startBuy()},{label:"I sold a lot",act:()=>startSell()},
+  {label:"My open stocks",act:()=>showOpen()},{label:"When can I sell?",act:()=>whenSell()},{label:"Next buy levels",act:()=>nextBuys()},{label:"Today's top picks",act:()=>topPicks()},{label:"📰 Stock news",act:()=>askNews()}];
+  if(CH.undo)c.push({label:"Undo last entry",act:()=>undo()});return c;}
+function reset(){CH.state=null;CH.data={};}
+
+/* ---------- buy flow ---------- */
+function startBuy(pre){reset();CH.state="buy";CH.data=Object.assign({date:today()},pre||{});nextBuyStep();}
+function nextBuyStep(){const d=CH.data;
+  if(!d.sym){const picks=[...held(B),...cur().top.filter(r=>r.colour!=="RED").map(r=>r.symbol)].filter((x,i,a)=>a.indexOf(x)===i).slice(0,10);
+    return say("Which stock did you buy? Tap one or type its NSE symbol.",[...picks.map(x=>({label:x,act:()=>{d.sym=x;nextBuyStep();}})),{label:"Cancel",act:cancel}]);}
+  if(d.price==null){const lp=lastPrice(d.sym),r=cur().top.find(x=>x.symbol===d.sym),ls=lotsOf(B,d.sym),opts=[];
+    if(lp)opts.push(lp);if(r){opts.push(r.close);if(r.entry_zone)opts.push(r.entry_zone[0],r.entry_zone[1]);}
+    if(ls.length){const lo=lastLot(B,d.sym).buyPrice;opts.push(r2(lo*(1-stepFor(B,d.sym)/100)));}
+    if(lp)opts.push(r2(lp*0.995),r2(lp*1.005));
+    const uniq=[...new Set(opts.filter(x=>x>0).map(x=>r2(x)))].sort((a,b)=>b-a).slice(0,6);
+    return say(`At what price did you buy <strong>${esc(d.sym)}</strong>?${lp?` Last known price ${fmt(lp)}.`:""} Tap a price or type it, e.g. <em>178.45</em>.`,
+      [...uniq.map(v=>({label:"₹"+fmt(v),act:()=>{d.price=v;nextBuyStep();}})),{label:"Cancel",act:cancel}]);}
+  if(d.qty==null){const part=partFor(B,d.sym),q=Math.floor(part/d.price),opts=[q,Math.floor(q/2),Math.round(q/10)*10].filter((x,i,a)=>x>0&&a.indexOf(x)===i);
+    return say(`How many shares at ₹${fmt(d.price)}? One part for ${esc(d.sym)} is ${inr(part)} ≈ <strong>${q}</strong> shares.`,
+      [...opts.map(x=>({label:x+" shares",act:()=>{d.qty=x;nextBuyStep();}})),{label:"Cancel",act:cancel}]);}
+  if(!d.dateAsked){d.dateAsked=true;return say("When did you buy it?",[{label:"Today "+today(),act:()=>{d.date=today();nextBuyStep();}},{label:"Yesterday "+yday(),act:()=>{d.date=yday();nextBuyStep();}},{label:"Cancel",act:cancel}]);}
+  const c=checkBuy(B,d.sym,r2(d.price),d.qty), cost=d.price*d.qty, t=r2(d.price*(1+B.settings.targetPct/100));
+  const notes=c.allowed?"":`<p style="margin:6px 0 0" class="amb">Rule note: ${esc(c.reasons.join(" "))} I can still record it because the trade has already happened.</p>`;
+  say(`Please confirm: <strong>bought ${d.qty} ${esc(d.sym)} at ₹${fmt(d.price)}</strong> on ${esc(d.date)} (lot ${Math.min(c.lotNo,3)}).<br>Cost ${inr(cost)} + about ${inr(legCharges("BUY",d.price,d.qty,B.settings).total)} charges. This lot's target: <strong>₹${fmt(t)}</strong>.${notes}`,
+    [{label:"Yes, record it",go:true,act:()=>doBuy()},{label:"Change price",act:()=>{d.price=null;nextBuyStep();}},{label:"Change quantity",act:()=>{d.qty=null;nextBuyStep();}},{label:"Cancel",act:cancel}]);}
+function doBuy(){const d=CH.data;CH.undo=JSON.stringify(B);
+  try{const {lot,broke}=recordBuy(B,d.sym,d.price,d.qty,d.date,"via assistant");persist();render();
+    const gap=stepFor(B,d.sym),lo=lastLot(B,d.sym).buyPrice,left=3-lotsOf(B,d.sym).length;
+    let nx="";if(left>0){let r=lo;const lv=[];for(let k=0;k<left;k++){r=r2(r*(1-gap/100));lv.push(r);}nx=` Next buy level${lv.length>1?"s":""}: <strong>${lv.map(x=>"₹"+fmt(x)).join(", ")}</strong> (gap ${gap}%).`;}
+    else nx=" All three parts are now in; no more averaging for this stock.";
+    reset();say(`Recorded <strong>lot ${lot.lotNo} of ${esc(lot.symbol)}</strong>: ${lot.qty} at ₹${fmt(lot.buyPrice)}. Sell this lot at <strong>₹${fmt(lot.target)}</strong>.${nx}${broke.length?`<br><span class="amb">Noted: ${esc(broke.join(" "))}</span>`:""}`);}
+  catch(e){CH.undo=null;say("I could not record it: "+esc(e.message));}}
+
+/* ---------- sell flow ---------- */
+function startSell(pre){reset();CH.state="sell";CH.data=Object.assign({date:today()},pre||{});nextSellStep();}
+function nextSellStep(){const d=CH.data;
+  if(!held(B).length){reset();return say("You have no open lots to sell.");}
+  if(!d.sym||!lotsOf(B,d.sym).length){return say("Which stock did you sell?",[...held(B).map(x=>({label:x,act:()=>{d.sym=x;nextSellStep();}})),{label:"Cancel",act:cancel}]);}
+  const ls=lotsOf(B,d.sym).sort((a,b)=>a.lotNo-b.lotNo);
+  if(!d.lotId){if(d.lot){const l=ls.find(x=>x.lotNo===d.lot);if(l)d.lotId=l.id;}
+    if(!d.lotId){if(ls.length===1)d.lotId=ls[0].id;else return say(`Which lot of ${esc(d.sym)}? Each lot is sold on its own.`,[...ls.map(l=>({label:`Lot ${l.lotNo}: ${l.qty} @ ${fmt(l.buyPrice)} → ${fmt(l.target)}`,act:()=>{d.lotId=l.id;nextSellStep();}})),{label:"Cancel",act:cancel}]);}}
+  const l=ls.find(x=>x.id===d.lotId);
+  if(d.price==null){const lp=lastPrice(d.sym),opts=[...new Set([l.target,lp,r2(l.target*1.005)].filter(x=>x>0).map(r2))];
+    return say(`At what price did lot ${l.lotNo} (${l.qty} shares, bought ${fmt(l.buyPrice)}) sell?`,[...opts.map(v=>({label:"₹"+fmt(v),act:()=>{d.price=v;nextSellStep();}})),{label:"Cancel",act:cancel}]);}
+  const net=r2((d.price-l.buyPrice)*l.qty-l.buyCh-legCharges("SELL",d.price,l.qty,B.settings).total);
+  say(`Confirm: <strong>sold lot ${l.lotNo} of ${esc(d.sym)}</strong> (${l.qty} shares) at ₹${fmt(d.price)}. Net ${net>=0?"profit":"loss"} after charges about <strong class="${net>=0?"pos":"neg"}">${inr(Math.abs(net))}</strong>.${d.price<l.buyPrice?' <span class="amb">This is below what you paid; your rule is to sell only in profit.</span>':""}`,
+    [{label:"Yes, record it",go:true,act:()=>doSell()},{label:"Change price",act:()=>{d.price=null;nextSellStep();}},{label:"Cancel",act:cancel}]);}
+function doSell(){const d=CH.data;CH.undo=JSON.stringify(B);
+  try{const l=sell(B,d.lotId,d.price,d.date,"via assistant");B.peak=Math.max(B.peak,equity(B));persist();render();reset();
+    const rest=lotsOf(B,l.symbol);say(`Recorded: lot ${l.lotNo} of ${esc(l.symbol)} sold. Net ${l.net>=0?"profit":"loss"} <strong class="${l.net>=0?"pos":"neg"}">${inr(Math.abs(l.net))}</strong>. ${rest.length?`Still open: ${rest.map(x=>`lot ${x.lotNo} → ₹${fmt(x.target)}`).join(", ")}.`:`No lots of ${esc(l.symbol)} left; its money is free for any stock.`}`);}
+  catch(e){CH.undo=null;say("I could not record it: "+esc(e.message));}}
+
+/* ---------- questions ---------- */
+function showOpen(){reset();const hs=held(B);if(!hs.length)return say("You have no open stocks right now. Free cash: "+inr(B.cash)+".");
+  say(`<strong>Open stocks</strong> (P&amp;L at the latest price):<ul>${hs.map(sym=>{const ls=lotsOf(B,sym),p=priceOf(B,ls[0]),u=r2(ls.reduce((a,l)=>a+(p-l.buyPrice)*l.qty,0));
+    return `<li><strong>${esc(sym)}</strong> · ${ls.length} lot${ls.length>1?"s":""} · now ₹${fmt(p)} · <span class="${u>=0?"pos":"neg"}">${u>=0?"+":"−"}${inr(Math.abs(u))}</span></li>`;}).join("")}</ul>Free cash ${inr(B.cash)} · unrealized ${sgn(unrealized(B))}.`);}
+function whenSell(sym){reset();const hs=sym?[sym]:held(B);if(!held(B).length)return say("Nothing open, so nothing to sell.");
+  say(`<strong>When each lot sells</strong> (each at +${B.settings.targetPct}% of its own price):<ul>${hs.map(s=>lotsOf(B,s).sort((a,b)=>a.lotNo-b.lotNo).map(l=>{const p=priceOf(B,l),d=100*(l.target/p-1);
+    return `<li>${esc(s)} lot ${l.lotNo} (${l.qty}): sell at <strong>₹${fmt(l.target)}</strong> — ${p>=l.target?'<span class="pos">reached now, you can sell this lot</span>':`${d.toFixed(2)}% above ₹${fmt(p)}`}</li>`;}).join("")).join("")}</ul>No date can be promised; these are price levels. You will get a phone alert when one is reached.`);}
+function nextBuys(){reset();const hs=held(B);if(!hs.length)return say("No open stocks, so no averaging levels. Check today's top picks.");
+  say(`<strong>Next buy levels</strong> under your rule:<ul>${hs.map(sym=>{const left=3-lotsOf(B,sym).length,g=stepFor(B,sym);if(left<=0)return `<li>${esc(sym)}: all 3 parts in.</li>`;
+    let r=lastLot(B,sym).buyPrice;const lv=[];for(let k=0;k<left;k++){r=r2(r*(1-g/100));lv.push(r);}const inv=invalidity(sym);
+    return `<li>${esc(sym)}: ${lv.map(x=>"₹"+fmt(x)).join(" then ")} (gap ${g}%, part ${inr(partFor(B,sym))})${B.blocked[sym]||(inv&&inv.hard)?' <span class="neg">buying blocked: '+esc(B.blocked[sym]||inv.why)+"</span>":""}</li>`;}).join("")}</ul>`);}
+function topPicks(){reset();const d=cur(),l=d.top.filter(r=>r.score>=(d.min_score||80)).slice(0,6);
+  if(!l.length)return say("No stock scores 80 or more in the latest scan. Holding cash is a valid choice.");
+  say(`<strong>Top picks</strong> from the close of ${esc(d.as_of)}:<ul>${l.map(r=>`<li><strong>${esc(r.symbol)}</strong> · score ${r.score.toFixed(0)} · ${r.colour==="GREEN"?'<span class="pos">in buy zone</span>':r.colour==="YELLOW"?'<span class="amb">close to buy zone</span>':"not in buy zone"}${r.step?` · gap ${r.step.step}%`:""}</li>`).join("")}</ul>Open the Top 20 tab for reasons and news.`,
+    [...l.slice(0,4).map(r=>({label:"I bought "+r.symbol,act:()=>startBuy({sym:r.symbol})})),...mainChips()]);}
+/* ---------- news ---------- */
+const TONE={positive:["🟢","Good for the price","pos"],negative:["🔴","Bad for the price","neg"],neutral:["⚪","Neutral","soft"]};
+function askNews(){reset();CH.state="news";say("Which stock? Type its name or NSE symbol, e.g. <em>PNB</em> or <em>Tata Power</em>.",[...held(B).slice(0,4).map(x=>({label:x,act:()=>newsFor(x)})),{label:"Cancel",act:cancel}]);}
+async function newsFor(q){reset();q=(q||"").trim();if(!q)return askNews();
+  if(!LOCAL){const r=cur().top.find(x=>x.symbol===(findSym(q)||q.toUpperCase()));
+    if(r&&r.news&&r.news.length)return say(`<strong>${esc(r.symbol)}</strong>: headlines from the last scan<ul class="plain">${r.news.map(n=>`<li>${n.flag?"🔴":"⚪"} <a href="${esc(n.url)}" target="_blank" rel="noopener">${esc(n.title)}</a> <span class="soft">${esc(n.source||"")} ${esc(n.date||"")}</span></li>`).join("")}</ul><p class="soft" style="font-size:12px">Live news with a good/bad verdict for any stock works in the laptop app; the phone shows the news saved with the Top 20.</p>`);
+    return say("Live news for any stock needs the laptop app (the phone can't read news sites directly). On the phone I can show news saved with the Top 20 stocks: type one of those, e.g. <em>"+esc((cur().top[0]||{}).symbol||"PNB")+"</em>.");}
+  say(`Fetching the latest news for <strong>${esc(q.toUpperCase())}</strong>…`,[]);
+  const r=await fetch("/api/news?q="+encodeURIComponent(q)).then(x=>x.json()).catch(()=>({ok:false,error:"The app is not responding."}));
+  if(!r.ok)return say(esc(r.error||"Could not fetch news."),[{label:"Try another stock",act:()=>askNews()},...mainChips()]);
+  const o=r.overall||{},vt=o.verdict==="positive"?TONE.positive:o.verdict==="negative"?TONE.negative:o.verdict==="mixed"?["🟡","Mixed","amb"]:TONE.neutral;
+  const px=r.price&&r.price[0]?` · CMP ₹${fmt(r.price[0])}${r.price[1]?` (${r.price[0]>=r.price[1]?"+":""}${(100*(r.price[0]/r.price[1]-1)).toFixed(2)}% today)`:""}`:"";
+  const list=(r.items||[]).map(it=>{const tn=TONE[it.tone]||TONE.neutral;
+    return `<li style="margin-bottom:8px">${tn[0]} <a href="${esc(it.url)}" target="_blank" rel="noopener">${esc(it.title)}</a><br><span class="soft" style="font-size:12.5px">${esc(it.source||"")}${it.date?" · "+esc(it.date):""} · <span class="${tn[2]}">${tn[1]}</span>${(it.why||[]).length?" ("+esc(it.why.map(w=>w.slice(1)).join(", "))+")":""}</span></li>`;}).join("");
+  say(`<strong>${esc(r.symbol)}</strong>${r.name?" · "+esc(r.name):""}${px}<br><span class="soft" style="font-size:12.5px">Latest news, last 14 days</span>
+    ${list?`<ul class="plain" style="margin:8px 0">${list}</ul>`:'<p class="soft">No headlines found in the last 14 days.</p>'}
+    <div class="verdict ${vt[2]}"><strong>${vt[0]} Overall: ${esc(o.text||"")}</strong>${(r.items||[]).length?`<br><span style="font-size:12.5px">${o.positive||0} good · ${o.negative||0} bad · ${o.neutral||0} neutral</span>`:""}</div>
+    <p class="soft" style="font-size:12px;margin:6px 0 0">Judged from headline wording only, not the full articles. It says how such news usually reads to the market, not what the price will do: prices often move before news is printed.</p>`,
+    [{label:"Analyze "+r.symbol,act:()=>{closeChat();location.hash="analyze";setTimeout(()=>runAnalyze(r.symbol),50);}},{label:"News of another stock",act:()=>askNews()},...mainChips()]);}
+function undo(){if(!CH.undo)return;B=migrate(JSON.parse(CH.undo));CH.undo=null;persist();render();reset();say("Undone. Your book is back to how it was before the last entry.");}
+function cancel(){reset();say("Cancelled. Nothing was recorded.");}
+
+/* ---------- free text ---------- */
+function handle(text){
+  const t=text.trim();if(!t)return;me(t);const low=t.toLowerCase(),n=parseNums(t),sym=findSym(t),d=CH.data;
+  if(/^(cancel|stop|no)$/i.test(t))return cancel();
+  if(/^undo/i.test(t))return undo();
+  if(CH.state==="buy"||CH.state==="sell"){
+    const num=parseFloat(t.replace(/[₹,rs\s]/gi,""));
+    if(!d.sym&&sym)d.sym=sym;
+    else if(d.price==null&&(n.price!=null||(!isNaN(num)&&/^[₹rs\s]*[0-9.,]+$/i.test(t))))d.price=n.price!=null?n.price:num;
+    else if(CH.state==="buy"&&d.qty==null&&(n.qty!=null||/^[0-9]+$/.test(t)))d.qty=n.qty!=null?n.qty:parseInt(t,10);
+    else if(n.lot)d.lot=n.lot;
+    else{if(n.price!=null)d.price=n.price;if(n.qty!=null)d.qty=n.qty;}
+    return CH.state==="buy"?nextBuyStep():nextSellStep();}
+  if(CH.state==="news")return newsFor(t);
+  if(/\bnews\b|headline/.test(low)){const q=t.replace(/\b(latest|recent|today'?s?|news|headlines?|about|of|for|on|the|show|me|get|give|any|stock|share|what'?s|is|there)\b/gi," ").replace(/[?!.]/g," ").trim();return q?newsFor(sym||q):askNews();}
+  if(/^(hi|hello|hey|help|hai)\b/i.test(t))return say("I can record your buys and sales, answer about your open stocks, sell targets and next buy levels, and fetch the latest news of any stock with a good/bad verdict. Type a stock, e.g. <em>PNB</em>, or tap a button.");
+  if(/next (buy|entry|level)|buy levels?|averag|add more/.test(low))return nextBuys();
+  if(/\b(bought|buy|purchased|added|entered)\b/.test(low))return startBuy({sym:sym||undefined,price:n.price,qty:n.qty,date:n.date||today(),dateAsked:!!n.date});
+  if(/\b(sold|sell order executed|exited|booked)\b/.test(low))return startSell({sym:sym||undefined,price:n.price,lot:n.lot});
+  if(/when.*sell|target|exit|book profit/.test(low))return whenSell(sym&&held(B).includes(sym)?sym:null);
+  if(/next (buy|entry|level)|average|averag|add more/.test(low))return nextBuys();
+  if(/open|holding|position|portfolio|my stocks|p&l|profit|loss/.test(low))return showOpen();
+  if(/top|pick|suggest|which stock|buy zone/.test(low))return topPicks();
+  if(/price/.test(low)&&sym&&n.price!=null){setPrice(B,sym,n.price,today()+"T"+new Date().toTimeString().slice(0,5));B.prices[sym].src="entered";persist();render();return say(`${esc(sym)} price set to ₹${fmt(n.price)}.`);}
+  if(/^[a-z0-9&.\- ]{2,40}$/i.test(t)&&/[a-z]/i.test(t)&&t.split(/\s+/).length<=4)return newsFor(sym||t);      // just a stock name: show its news
+  say("I can record buys and sales, answer about your open stocks, sell targets, next buy levels and today's picks, and fetch any stock's news. Try: <em>bought MRPL 300 at 178.5</em> or <em>PNB news</em>.");}
+
+function openChat(){const c=$("#chat");c.hidden=false;$("#fab").setAttribute("aria-expanded","true");
+  if(!CH.opened){CH.opened=true;say(`Hi, I'm <strong>Sto-Bot</strong>! Tell me what you traded, e.g. <em>bought MRPL 300 at 178.5</em>, or type any stock, e.g. <em>PNB</em>, for its latest news and whether it is good or bad for the price. I update your positions straight away${cloudRef?" and save them to your Claude account":""}.`);}
+  $("#chatIn").focus();}
+function closeChat(){$("#chat").hidden=true;$("#fab").setAttribute("aria-expanded","false");$("#fab").focus();}
+$("#fab").addEventListener("click",()=>$("#chat").hidden?openChat():closeChat());
+$("#chatX").addEventListener("click",closeChat);
+$("#chat").addEventListener("keydown",e=>{if(e.key==="Escape")closeChat();});
+$("#chips").addEventListener("click",e=>{const b=e.target.closest("[data-chip]");if(!b)return;const c=CH.acts[b.dataset.chip];if(!c)return;me(c.label);c.act();});
+$("#chatF").addEventListener("submit",e=>{e.preventDefault();const v=$("#chatIn").value;$("#chatIn").value="";handle(v);});
+loadLocal();applyScan();render();if(LOCAL)initLocal();else if(PHONE)initPhone();else initCloud();
+</script>
+</body>
+</html>
