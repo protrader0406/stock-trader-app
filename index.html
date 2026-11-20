@@ -127,6 +127,8 @@ a.btn:hover,a.btn:focus-visible{border-color:var(--accent)}
 .faq{padding:0}.faq>summary{padding:14px 16px;font-weight:700;cursor:pointer;list-style-position:inside}
 .faq>summary:focus-visible{outline:2px solid var(--accent);outline-offset:-2px;border-radius:12px}
 .faq .faqA{padding:0 16px 14px}.faq .faqA p{margin:8px 0}.faqH{margin:18px 0 8px;font-size:15px;letter-spacing:.04em;text-transform:uppercase;color:var(--accent)}
+.tvl{font-size:13px;font-weight:600;padding:3px 9px;border:1px solid var(--line,#334);border-radius:999px;color:inherit;text-decoration:none;white-space:nowrap}
+.tvl:hover,.tvl:focus-visible{border-color:var(--accent);color:var(--accent)}
 </style>
 </head>
 <body>
@@ -342,7 +344,7 @@ function applyScan(){
   }
   if(changed) persist();
 }
-const PAGES=[["top20","Top 20"],["analyze","Analyze other stocks"],["book","Positions"],["perf","Performance"],["invalid","Became invalid"],["buy","Add buy"],["calc","Calculator"],["ledger","History"],["setup","Setup"],["faq","FAQ"]];
+const PAGES=[["top20","Top stocks"],["analyze","Analyze other stocks"],["book","Positions"],["perf","Performance"],["invalid","Became invalid"],["buy","Add buy"],["calc","Calculator"],["ledger","History"],["setup","Setup"],["faq","FAQ"]];
 const KEY="tranche-book-v1";
 let B=newBook(), cloudRef=null, writing=false, dirty=false, flash=null, scanNote="";
 const REASSESS=["I re-read the latest results and announcements: fundamentals are still healthy.",
@@ -399,6 +401,7 @@ async function pollPhone(){if(!GH)return;let changed=false;
     const q=await ghRaw("quotes.json");if(q&&q.prices&&(!QUOTES||q.ts!==QUOTES.ts)){QUOTES=q;applyQuotes();changed=true;}
     const bt=await ghRaw("backtest_month.json").catch(()=>null);if(bt&&(!BT.res||bt.generated_at!==BT.res.generated_at)){BT.res=bt;BT.loaded=true;changed=true;}
     const by=await ghRaw("backtest_year.json").catch(()=>null);if(by&&(!BT.year||by.generated_at!==BT.year.generated_at)){BT.year=by;changed=true;}
+    const bc=await ghRaw("backtest_compare.json").catch(()=>null);if(bc&&(!CMP.res||bc.generated_at!==CMP.res.generated_at)){CMP.res=bc;CMP.loaded=true;changed=true;}
     const b5=await ghRaw("backtest_5y.json").catch(()=>null);if(b5&&(!BT.y5||b5.generated_at!==BT.y5.generated_at)){BT.y5=b5;changed=true;}
     const an=await ghRaw("analyzed.json");if(an){const items=Object.values(an);if(JSON.stringify(items.map(x=>x.analyzed_at))!==JSON.stringify(ANA.items.map(x=>x.analyzed_at))){ANA.items=items;ANA.loaded=true;changed=true;}}
     if(!ghWriting){const bk=await ghBook();if(bk&&bk.rev>B.rev){B=migrate(JSON.parse(bk.json));try{localStorage.setItem(KEY,JSON.stringify(B));}catch(e){}applyScan();applyQuotes();changed=true;}}
@@ -420,6 +423,7 @@ async function saveLocalBook(){
   catch(e){setSync("Could not reach the app's local server; kept in this window only");}}
 function typing(){const a=document.activeElement;return a&&(a.tagName==="INPUT"||a.tagName==="TEXTAREA"||a.tagName==="SELECT")&&!a.closest("#chat");}
 let deferredRender=false;
+document.addEventListener("visibilitychange",()=>{if(!document.hidden&&LOCAL)pollLocal();});
 async function pollLocal(){
   let changed=false;
   const sc=await getJSON("/api/scan");
@@ -554,10 +558,12 @@ function levelsBlock(r){if(r.ema50==null&&r.ath==null)return `<p class="soft" st
    <div><dt>All-time high</dt><dd>${r.ath!=null?r.ath.toFixed(2)+` <span class="soft">${esc(r.ath_date||"")} · ${pct(px,r.ath)}% from it</span>`:"–"}</dd></div>
    <div><dt>All-time low</dt><dd>${r.atl!=null?r.atl.toFixed(2)+` <span class="soft">${esc(r.atl_date||"")}</span>`:"–"}</dd></div></div>
    ${r.since?`<p class="soft" style="margin:2px 0 0;font-size:13px">All-time = Yahoo Finance history since ${esc(r.since)}, adjusted for splits.</p>`:""}`;}
+function tvSym(sym){return "NSE:"+String(sym).replace(/[&-]/g,"_");}
+function tvLink(sym){return `<a class="tvl" href="https://www.tradingview.com/chart/?symbol=${encodeURIComponent(tvSym(sym))}" target="_blank" rel="noopener" aria-label="Open the ${esc(sym)} chart on TradingView (new window)">📈 Chart</a>`;}
 function stockCard(r,t,opt){const rd=READ[r.colour]||READ.GREY, inv=opt&&opt.own?((r.vetoes||[]).length?{hard:true,why:r.vetoes.join("; ")}:/down/i.test(r.state||"")?{hard:false,why:"Price structure is trending down: not a buy under these rules."}:null):invalidity(r.symbol), mine=held(B).includes(r.symbol);
    const why=r.why||fallbackWhy(r,t), zone=r.zone||fallbackZone(r);
    return `<section class="card"><div class="row" style="align-items:center;justify-content:space-between;gap:6px">
-   <div class="row" style="align-items:center;gap:10px"><span class="score" style="background:${r.score>=88?"var(--good)":r.score>=84?"var(--accent)":"var(--accent2)"}" aria-label="Score ${r.score.toFixed(0)} of 100">${r.score.toFixed(0)}</span><h2 style="margin:0">${typeof r.rank==="number"?r.rank+". ":""}${esc(r.symbol)}</h2></div><span class="pill ${inv&&inv.hard?"closed":rd[0]}">${inv&&inv.hard?"Invalid":rd[1]}</span></div>
+   <div class="row" style="align-items:center;gap:10px"><span class="score" style="background:${r.score>=88?"var(--good)":r.score>=84?"var(--accent)":"var(--accent2)"}" aria-label="Score ${r.score.toFixed(0)} of 100">${r.score.toFixed(0)}</span><h2 style="margin:0">${typeof r.rank==="number"?r.rank+". ":""}${esc(r.symbol)}</h2>${tvLink(r.symbol)}</div><span class="pill ${inv&&inv.hard?"closed":rd[0]}">${inv&&inv.hard?"Invalid":rd[1]}</span></div>
    <p class="soft" style="margin:2px 0 8px">${esc(r.name||"")}${r.sector?" · "+esc(r.sector):""}${mine?" · <strong>you hold this</strong>":""}</p>
    ${inv?`<p class="note ${inv.hard?"bad":""}" style="margin:0 0 8px">${esc(inv.why)}</p>`:""}
    ${cmpLine(r)}
@@ -630,6 +636,31 @@ function btSection(){
     ${r.curve.map(c=>{const ev=r.events.filter(e=>e.date===c.date);return `<tr><td>${esc(c.date)}<br><span class="soft num">${inr0(c.equity)}</span></td><td>${ev.length?ev.map(e=>`${e.type==="BUY"?"🟢 Buy":e.type==="SELL"?"💰 Sell":"⚪"} <strong>${esc(e.symbol)}</strong>${e.qty?` ${e.qty} @ ${e.price.toFixed(2)}`:""} <span class="soft">${esc(e.note||"")}</span>`).join("<br>"):'<span class="soft">no trades</span>'}</td></tr>`;}).join("")}</tbody></table></div></details>
    <p class="soft" style="font-size:13px;margin-top:8px">${esc(R.note||"")}</p>${btn}</section>`;
   return h;}
+const CMP={res:null,running:false,pending:false,loaded:false,period:"5y"};
+async function loadCMP(){if(!LOCAL)return;const r=await fetch("/api/compare").then(x=>x.json()).catch(()=>null);
+  if(r){const was=CMP.running;CMP.res=r.result;CMP.running=r.running;CMP.pending=r.pending;CMP.loaded=true;if(page()==="perf"&&!typing())render();
+    if(CMP.running||CMP.pending)setTimeout(loadCMP,60000);else if(was){flash={cls:"good",msg:"Rule comparison finished."};render();}}}
+function cmpSection(){
+  if(LOCAL&&!CMP.loaded)loadCMP();
+  const R=CMP.res,pcs=v=>v==null?"–":`<span class="${v>0?"pos":v<0?"neg":""}">${v>0?"+":""}${Number(v).toFixed(2)}%</span>`,inr0=v=>"₹"+Math.round(v).toLocaleString("en-IN");
+  let h=`<section class="card"><h2>Compare rule changes</h2><p class="soft" style="margin:0 0 8px">The same daily lists replayed with one rule changed at a time: target %, time-based target, stop-loss, money per stock, cash reserve, market switch. Charges included.</p>`;
+  const status=CMP.running?`<p class="note">Comparison running in the background (about 30 to 90 minutes). You can keep using the app.</p>`:CMP.pending?`<p class="note">Comparison queued: it starts after the evening scan, or within 5 minutes while this app is open.</p>`:"";
+  const btn=LOCAL?`<button type="button" id="cmpRun" ${CMP.running||CMP.pending?"disabled":""}>${R?"↻ Run the comparison again":"▶ Run the comparison"}</button>`:"";
+  if(!R||!R.periods)return h+status+(LOCAL?`<p>Takes about 30 to 90 minutes in the background.</p>`:"<p>It is made on the laptop and shows here after it syncs.</p>")+btn+`</section>`;
+  const ps=Object.keys(R.periods);if(!R.periods[CMP.period])CMP.period=ps[0];
+  const pb=(k,l)=>R.periods[k]?`<button type="button" class="${CMP.period===k?"primary":""}" data-cmpp="${k}">${l}</button>`:"";
+  const P=R.periods[CMP.period],vs=P.variants,best=Math.max(...vs.map(v=>v.return_pct)),base=vs.find(v=>v.key==="base")||vs[0],five=CMP.period==="5y";
+  h+=`<div class="row" style="gap:6px;margin-bottom:8px">${pb("year","Last year")}${pb("5y","Last 5 years")}</div>
+   <p class="soft" style="margin:0 0 8px">${esc(base.from)} to ${esc(base.to)} · starting ${inr0(base.capital)} · Nifty ${pcs(base.nifty_pct)}${five&&base.nifty_per_year_pct!=null?` (${pcs(base.nifty_per_year_pct)} a year)`:""} · made ${esc((R.generated_at||"").replace("T"," ").slice(0,16))}</p>
+   <div class="scroll"><table><thead><tr><th>Rule</th><th class="r">Total return</th>${five?'<th class="r">Per year</th>':""}<th class="r">vs now</th><th class="r">Target hit</th><th class="r">Avg days to target</th><th class="r">Worst dip</th><th class="r">Lots open at end</th><th class="r">Losses booked</th></tr></thead><tbody>
+   ${vs.map(v=>`<tr${v.return_pct===best?' style="background:rgba(52,211,153,.10)"':v.key==="base"?' style="background:rgba(56,189,248,.08)"':""}><td><span class="soft" style="font-size:12px">${esc(v.group)}</span><br><strong>${esc(v.label)}</strong>${v.return_pct===best?' <span class="pill hit">best</span>':""}</td>
+     <td class="r">${pcs(v.return_pct)}<br><span class="soft">${inr0(v.end_value)}</span></td>${five?`<td class="r">${pcs(v.per_year_pct)}</td>`:""}<td class="r">${v.key==="base"?"–":pcs(v.vs_base_pct)}</td>
+     <td class="r">${v.hit_ratio_pct!=null?v.hit_ratio_pct+"%":"–"}</td><td class="r">${v.avg_days_to_sell!=null?v.avg_days_to_sell+" d":"–"}<br><span class="soft">half ≤ ${v.median_days_to_sell??"–"} d</span></td>
+     <td class="r">${pcs(v.max_drawdown_pct)}</td><td class="r">${v.open_lots}<br><span class="soft">${inr0(v.money_in_open_lots||0)}</span></td>
+     <td class="r">${v.stop_losses?`${v.stop_losses} stops<br><span class="neg">${inr0(v.loss_booked)}</span>`:'<span class="soft">none</span>'}</td></tr>`).join("")}
+   </tbody></table></div>
+   <p class="soft" style="font-size:13px;margin-top:8px">Green row = highest total return; blue row = your rules today. Look at the worst dip and the money stuck at the end as well as the return. ${esc(R.note||"")}</p>${status}${btn}</section>`;
+  return h;}
 const ANA={items:[],ready:true,busy:"",err:"",scanning:false,loaded:false};
 async function loadAnalyzed(){if(!LOCAL)return;const d=await fetch("/api/analyzed").then(r=>r.json()).catch(()=>null);
   if(d){ANA.items=d.items||[];ANA.ready=d.ready;ANA.scanning=d.scanning;ANA.loaded=true;if(page()==="analyze"&&!typing())render();}}
@@ -669,7 +700,7 @@ faq(){
   <h3 class="faqH">Score and list</h3>
   ${q("How is the score out of 100 worked out?",`<ul class="plain"><li><strong>Company strength 25:</strong> return on equity, growth, debt, margins, cash flow, pledging</li><li><strong>Technical 25:</strong> trend, moving averages, chart pattern</li><li><strong>Momentum 20:</strong> its 3- and 6-month rise ranked against all Nifty 500 stocks, and how much it beat the Nifty over 3 months</li><li><strong>Liquidity 15:</strong> trading volume</li><li><strong>Risk and market 15:</strong> the Nifty's trend, how jumpy the stock is, distance from its 52-week high, buying/selling pressure</li></ul>
    <p>When company data is missing, the other 75 points are scaled up to 100 and the card says so. The list shows stocks scoring ${m}+.</p>`)}
-  ${q("Why is a high-scoring stock left out of the Top 20?",`<p>Only large, steady companies are allowed, so a stock is less likely to keep falling: market value over ₹15,000 crore, return on equity 10%+, debt below equity, positive free cash flow, profit not down more than 25%, and about 3 years of trading history. A stock that misses any of these is left out, and the reason is shown at the end of the Top 20 tab or under "Why it is not listed" in Analyze other stocks.</p>`)}
+  ${q("Why is a high-scoring stock left out of the top list?",`<p>Only large, steady companies are allowed, so a stock is less likely to keep falling: market value over ₹15,000 crore, return on equity 10%+, debt below equity, positive free cash flow, profit not down more than 25%, and about 3 years of trading history. A stock that misses any of these is left out, and the reason is shown at the end of the Top 20 tab or under "Why it is not listed" in Analyze other stocks.</p>`)}
   ${q("What is the +3% history figure (e.g. touched +3% within 5 sessions 46% of the time)?",`<p>The tool looks back over about 3 years for days when the stock was in a similar state to today, and counts how often it then reached +${t}% within the next 5 trading days, and how often it first fell ${t}%. It is a past frequency, not a promise.</p>`)}
   ${q("When does a stock move to “Became invalid”?",`<p>Stocks stay on your list day after day until one of these happens: the trend turns down, it fails a company red-flag check, or it drops out of the scan because it no longer qualifies. Then it moves to the Became invalid tab with the reason.</p>`)}
   <h3 class="faqH">Your rules</h3>
@@ -685,7 +716,7 @@ faq(){
 },
 analyze(){
   const d=cur(),t=d.target_pct;
-  let h=`<section><h2>Analyze any NSE stock</h2><p class="soft" style="margin:0">Same checks as the Top 20: technical and company score, buy zone, +${t}% level, gap for your next parts, CMP, EMAs, all-time high and low, and news. Stocks you add stay here and are re-checked every evening.</p></section>`;
+  let h=`<section><h2>Analyze any NSE stock</h2><p class="soft" style="margin:0">Same checks as the top list: technical and company score, buy zone, +${t}% level, gap for your next parts, CMP, EMAs, all-time high and low, and news. Stocks you add stay here and are re-checked every evening.</p></section>`;
   if(!LOCAL&&!PHONE) return h+`<p class="note">Analysing a stock needs live data, so it runs in the Windows app on your laptop (Stock Trader AI). Open it there.</p>`;
   if(PHONE){h+=`<p class="note">New stocks are analysed in the laptop app; they show up here after it syncs, and are re-checked every evening.</p>`;}
   if(!PHONE&&!ANA.loaded) loadAnalyzed();
@@ -704,10 +735,10 @@ analyze(){
       if(r.score<minS)reasons.push(`Score ${r.score.toFixed(0)} is below ${minS}.`);
       if(/down/i.test(r.state||""))reasons.push("Price trend is down.");
       if(!reasons.length)reasons.push("It passes the checks, but other stocks ranked higher today.");}
-    if(inTop) notes.push(`<strong class="pos">#${inTop.rank} in today's Top 20.</strong>`);
+    if(inTop) notes.push(`<strong class="pos">#${inTop.rank} in today's top list.</strong>`);
     else if((r.vetoes||[]).length) notes.push(`<strong class="neg">Fails a hard check:</strong> ${esc(r.vetoes.join("; "))}`);
-    else if((r.quality_issues||[]).length) notes.push(`<strong class="amb">Not in the Top 20 because it misses the quality bar:</strong> ${esc(r.quality_issues.join("; "))}`);
-    else if(r.score<(d.min_score||80)) notes.push(`<span class="amb">Score is below ${d.min_score||80}, so it is not in the Top 20.</span>`);
+    else if((r.quality_issues||[]).length) notes.push(`<strong class="amb">Not in the top list because it misses the quality bar:</strong> ${esc(r.quality_issues.join("; "))}`);
+    else if(r.score<(d.min_score||80)) notes.push(`<span class="amb">Score is below ${d.min_score||80}, so it is not in the top list.</span>`);
     else notes.push(`<span class="soft">Passes the checks but other stocks ranked higher today.</span>`);
     const extra=`<p style="margin:8px 0 0">${notes.join(" ")}</p><div class="row" style="gap:6px;margin-top:8px;align-items:center">
       <span class="soft" style="font-size:13px">Checked ${esc((r.analyzed_at||"").replace("T"," ").slice(0,16))} · prices to ${esc(r.as_of||"")}${r.compare_note?" · "+esc(r.compare_note):""}</span>
@@ -763,7 +794,7 @@ top20(){
   return h;
 },
 perf(){
-  const bt=btSection();
+  const bt=btSection()+cmpSection();
   const d=cur(),days=Object.keys(d.perf_days||{}).sort().reverse(),weeks=Object.keys(d.perf_weeks||{}).sort().reverse();
   if(!days.length) return bt+`<section class="card"><h2>Performance</h2><p>Daily and weekly tables start with the next scan (weekdays at 6 PM). From then on every listed stock is followed until it becomes invalid.</p></section>`;
   const view=PERF.view, near=PERF.near;
@@ -827,7 +858,7 @@ book(){
     const lo=Math.min(...pts.map(x=>x.v))*0.995, hi=Math.max(...pts.map(x=>x.v))*1.005, at=v=>(100*(v-lo)/(hi-lo)).toFixed(1);
     h+=`<section class="card" aria-labelledby="h-${esc(sym)}">
      <div class="row" style="align-items:center;justify-content:space-between;gap:6px">
-      <div><h2 id="h-${esc(sym)}" style="margin:0">${esc(sym)}</h2><span class="soft" style="font-size:13px">${ls.length} of 3 parts · part ${inr(partFor(B,sym))} · gap ${gap}%</span></div>
+      <div><h2 id="h-${esc(sym)}" style="margin:0;display:inline">${esc(sym)}</h2> ${tvLink(sym)}<br><span class="soft" style="font-size:13px">${ls.length} of 3 parts · part ${inr(partFor(B,sym))} · gap ${gap}%</span></div>
       <div style="text-align:right"><div class="big">${p.toFixed(2)}</div><div style="font-size:13px">${pc(dayChg(sym))} <span class="soft">${px?(px.src==="live"?"live "+esc(px.ts.slice(11,16)):px.src==="scan"?"close "+esc(px.ts):"entered "+esc(px.ts)):""}</span></div></div></div>
      <div class="tiles" style="margin-top:10px">${tile("Invested",inr(inv$))}${tile("P&L now",sgn(u),u>=0?"g":"r")}${tile("If sold now, net",sgn(net),net>=0?"g":"r")}</div>
      ${inv?`<p class="note ${inv.hard?"bad":""}" style="margin-top:10px"><strong>${inv.hard?"INVALID":"Weakening"}:</strong> ${esc(inv.why)} (scan of ${esc(cur().as_of)}). ${inv.hard?"Do not add more. Your open lots stay until their own targets, so this money may be tied up for a while.":"Be careful before adding a part."}</p>`:""}
@@ -1003,6 +1034,8 @@ main.addEventListener("click",async e=>{
   if(t.id==="anaScan"){await fetch("/api/scan/run",{method:"POST"}).catch(()=>{});ANA.scanning=true;render();
     const iv=setInterval(async()=>{await loadAnalyzed();if(!ANA.scanning){clearInterval(iv);flash={cls:"good",msg:"Scan finished. You can analyse stocks now."};location.reload();}},20000);return;}
   if(t.dataset&&t.dataset.bt){BT.tab=t.dataset.bt;render();return;}
+  if(t.dataset&&t.dataset.cmpp){CMP.period=t.dataset.cmpp;render();return;}
+  if(t.id==="cmpRun"){await fetch("/api/compare/run",{method:"POST"}).catch(()=>{});CMP.pending=true;render();setTimeout(loadCMP,20000);return;}
   if(t.dataset&&t.dataset.btp){BT.period=t.dataset.btp;render();return;}
   if(t.id==="btRun"){const per=t.dataset.period;await fetch("/api/backtest/run",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({period:per})}).catch(()=>{});BT.running=true;BT.runPeriod=per;render();setTimeout(loadBT,15000);return;}
   if(t.id==="clSave"||t.id==="clPub"||t.id==="clSync"){const out=$("#clOut");
@@ -1070,6 +1103,21 @@ function mainChips(){const c=[{label:"I bought a stock",act:()=>startBuy()},{lab
 function reset(){CH.state=null;CH.data={};}
 
 /* ---------- buy flow ---------- */
+/* any NSE stock or ETF: suggest real symbols with their live price, the user taps the right one */
+const ETF_HINTS={GOLDBEES:"Nippon India Gold ETF",GOLDIETF:"ICICI Prudential Gold ETF",SETFGOLD:"SBI Gold ETF",HDFCGOLD:"HDFC Gold ETF",AXISGOLD:"Axis Gold ETF",
+  SILVERBEES:"Nippon India Silver ETF",SILVERIETF:"ICICI Prudential Silver ETF",NIFTYBEES:"Nippon India Nifty 50 ETF",BANKBEES:"Nippon India Bank ETF",JUNIORBEES:"Nippon India Next 50 ETF",LIQUIDBEES:"Nippon India Liquid ETF",MON100:"Motilal Oswal Nasdaq 100 ETF"};
+async function pickSymbol(text,done){
+  const sayPick=(ms,note)=>say(`${note} Tap the right one, or type the exact NSE symbol.`,[...ms.map(m=>({label:`${m.symbol}${m.price?" · ₹"+fmt(m.price):""}`,act:()=>{if(m.price&&!B.prices[m.symbol])B.prices[m.symbol]={p:r2(m.price),ts:today()};done(m.symbol);}})),{label:"Cancel",act:cancel}]);
+  if(LOCAL){say(`Looking up <strong>${esc(text)}</strong> on NSE…`,[]);
+    const r=await fetch("/api/lookup?q="+encodeURIComponent(text)).then(x=>x.json()).catch(()=>null);
+    const ms=(r&&r.matches)||[];
+    if(!ms.length)return say(`I couldn't find <strong>${esc(text)}</strong> on NSE. Type its exact NSE symbol (for ETFs e.g. GOLDBEES, GOLDIETF, SETFGOLD), as shown in your broker app.`,[{label:"Cancel",act:cancel}]);
+    return sayPick(ms,ms.length===1?`Found <strong>${esc(ms[0].symbol)}</strong>${ms[0].name?" · "+esc(ms[0].name):""}.`:"I found these on NSE:");}
+  const low=text.toLowerCase(),words=low.split(/[^a-z0-9]+/).filter(w=>w&&!["etf","the","of","fund","ltd"].includes(w)).map(w=>({prud:"prudential",nip:"nippon"})[w]||w);
+  const ms=Object.entries(ETF_HINTS).filter(([k,n])=>words.length&&words.every(w=>(k+" "+n).toLowerCase().includes(w))).map(([k])=>({symbol:k}));
+  const tok=text.trim().toUpperCase();if(/^[A-Z0-9&\-]{2,20}$/.test(tok)&&!ms.some(m=>m.symbol===tok))ms.unshift({symbol:tok});
+  if(!ms.length)return say(`Type the exact NSE symbol for <strong>${esc(text)}</strong>, as shown in your broker app (e.g. GOLDIETF).`,[{label:"Cancel",act:cancel}]);
+  return sayPick(ms.slice(0,6),"Did you mean:");}
 function startBuy(pre){reset();CH.state="buy";CH.data=Object.assign({date:today()},pre||{});nextBuyStep();}
 function nextBuyStep(){const d=CH.data;
   if(!d.sym){const picks=[...held(B),...cur().top.filter(r=>r.colour!=="RED").map(r=>r.symbol)].filter((x,i,a)=>a.indexOf(x)===i).slice(0,10);
@@ -1137,7 +1185,7 @@ function askNews(){reset();CH.state="news";say("Which stock? Type its name or NS
 async function newsFor(q){reset();q=(q||"").trim();if(!q)return askNews();
   if(!LOCAL){const r=cur().top.find(x=>x.symbol===(findSym(q)||q.toUpperCase()));
     if(r&&r.news&&r.news.length)return say(`<strong>${esc(r.symbol)}</strong>: headlines from the last scan<ul class="plain">${r.news.map(n=>`<li>${n.flag?"🔴":"⚪"} <a href="${esc(n.url)}" target="_blank" rel="noopener">${esc(n.title)}</a> <span class="soft">${esc(n.source||"")} ${esc(n.date||"")}</span></li>`).join("")}</ul><p class="soft" style="font-size:12px">Live news with a good/bad verdict for any stock works in the laptop app; the phone shows the news saved with the Top 20.</p>`);
-    return say("Live news for any stock needs the laptop app (the phone can't read news sites directly). On the phone I can show news saved with the Top 20 stocks: type one of those, e.g. <em>"+esc((cur().top[0]||{}).symbol||"PNB")+"</em>.");}
+    return say("Live news for any stock needs the laptop app (the phone can't read news sites directly). On the phone I can show news saved with the top list: type one of those, e.g. <em>"+esc((cur().top[0]||{}).symbol||"PNB")+"</em>.");}
   say(`Fetching the latest news for <strong>${esc(q.toUpperCase())}</strong>…`,[]);
   const r=await fetch("/api/news?q="+encodeURIComponent(q)).then(x=>x.json()).catch(()=>({ok:false,error:"The app is not responding."}));
   if(!r.ok)return say(esc(r.error||"Could not fetch news."),[{label:"Try another stock",act:()=>askNews()},...mainChips()]);
@@ -1160,7 +1208,11 @@ function handle(text){
   if(/^undo/i.test(t))return undo();
   if(CH.state==="buy"||CH.state==="sell"){
     const num=parseFloat(t.replace(/[₹,rs\s]/gi,""));
-    if(!d.sym&&sym)d.sym=sym;
+    if(!d.sym&&!(isNaN(num)===false&&/^[₹rs\s]*[0-9.,]+$/i.test(t))){
+      const known=sym&&(knownSyms().includes(sym)||held(B).includes(sym));
+      if(known)d.sym=sym;
+      else return pickSymbol(t,x=>{d.sym=x;CH.state==="buy"?nextBuyStep():nextSellStep();});}
+    else if(!d.sym&&sym)d.sym=sym;
     else if(d.price==null&&(n.price!=null||(!isNaN(num)&&/^[₹rs\s]*[0-9.,]+$/i.test(t))))d.price=n.price!=null?n.price:num;
     else if(CH.state==="buy"&&d.qty==null&&(n.qty!=null||/^[0-9]+$/.test(t)))d.qty=n.qty!=null?n.qty:parseInt(t,10);
     else if(n.lot)d.lot=n.lot;
