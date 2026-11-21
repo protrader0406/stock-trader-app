@@ -53,6 +53,7 @@ nav a[aria-current="page"]{color:var(--accent-ink);background:linear-gradient(90
 .foldbtn{flex:none;min-width:34px;min-height:34px;padding:0 8px;margin-right:6px;font-size:16px;line-height:1;border-radius:8px}
 .foldbar{display:flex;gap:6px;flex-wrap:wrap;margin:0 0 10px}
 .sortbtn{all:unset;cursor:pointer;font:inherit;font-weight:600;white-space:nowrap}.sortbtn:focus-visible{outline:2px solid var(--blue);outline-offset:2px;border-radius:4px}
+#goldRpF input[type=checkbox]{width:20px;height:20px;min-height:0;margin:0;flex:none}#goldRpF label{flex:1 1 150px}#goldRpF fieldset label{flex:none}
 .chartbar{display:flex;gap:6px;align-items:center;margin:0 0 4px}.chartbar .rangesel{flex:1;margin:0}.fsbtn{flex:none;min-width:38px;min-height:34px;padding:0 8px;font-size:17px;line-height:1}
 #fsDlg{width:100vw;max-width:100vw;height:100vh;max-height:100vh;margin:0;padding:14px 18px;border:0;background:var(--bg,#0b1220);color:inherit}#fsDlg::backdrop{background:rgba(0,0,0,.7)}#fsDlg .fsh{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:8px}#fsDlg .chart svg{max-height:calc(100vh - 190px)}
 .rangesel{width:100%;margin:0 0 4px;font-size:14px;padding:6px 8px}.pats{margin:4px 0 0;padding:0;list-style:none;font-size:13px;line-height:1.45}
@@ -589,6 +590,62 @@ function makeFoldable(root){let n=0;
     const first=secs.find(s=>s.querySelector(".foldbtn"));if(first)first.before(bar);}}
 function setFold(b,open){const body=document.getElementById(b.getAttribute("aria-controls"));if(!body)return;body.hidden=!open;b.setAttribute("aria-expanded",String(open));b.textContent=open?"▾":"▸";
   b.setAttribute("aria-label",(open?"Hide ":"Show ")+b.getAttribute("aria-label").replace(/^(Show|Hide) /,""));open?FOLD.delete(b.dataset.fold):FOLD.add(b.dataset.fold);}
+var GR={res:null,busy:false,err:null,loaded:false,params:{timeframe:"15m",days:"",target:30,stop:20,breakeven_at:15,daily_goal:30,daily_max_loss:40,max_trades:2,spread:0.4,retest_pad:2,use_bias:true,setup_a:true,setup_b:true}};
+try{const sp=JSON.parse(localStorage.getItem("gold-replay-params")||"null");if(sp)Object.assign(GR.params,sp);}catch(e){}
+async function loadGR(){let j=null;if(LOCAL)j=await getJSON("/api/gold/replay");else if(GH){const r=await ghRaw("gold_replay.json").catch(()=>null);j=r?{result:r,busy:false}:null;}
+  GR.loaded=true;if(j){const was=GR.busy;GR.busy=!!j.busy;GR.err=j.error||null;if(j.result)GR.res=j.result;if(GR.busy)setTimeout(loadGR,3000);if(page()==="gold"&&!typing())render();}}
+function eqSvg(curve){if(!curve||curve.length<2)return"";const W=700,H=160,P=28,v=curve.map(x=>x[1]),mn=Math.min(0,...v),mx=Math.max(0,...v),sp=(mx-mn)||1;
+  const x=i=>P+(W-2*P)*i/(curve.length-1),y=t=>H-18-(H-30)*(t-mn)/sp;
+  const pts=curve.map((c,i)=>`${x(i).toFixed(1)},${y(c[1]).toFixed(1)}`).join(" "),last=v[v.length-1];
+  return `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Running total of points: ${last>=0?"+":""}${last} after ${curve.length} days, lowest ${mn}, highest ${mx}" style="width:100%;height:auto;background:rgba(255,255,255,.02);border-radius:8px">
+   <line x1="${P}" x2="${W-P}" y1="${y(0)}" y2="${y(0)}" stroke="#9aa4b2" stroke-dasharray="3 3" stroke-opacity=".5"/><polyline fill="none" stroke="${last>=0?"#34d399":"#fb7185"}" stroke-width="2" points="${pts}"/>
+   <text x="${P}" y="${H-4}" font-size="11" fill="#9aa4b2">${curve[0][0]}</text><text x="${W-P}" y="${H-4}" font-size="11" fill="#9aa4b2" text-anchor="end">${curve[curve.length-1][0]}</text>
+   <text x="${W-P+2}" y="${y(last)+4}" font-size="11" fill="#eaf0ff">${last>=0?"+":""}${last}</text></svg>`;}
+function daily30Html(G){const D=G.daily30;if(!D||D.error)return `<section class="card"><h2>Daily 30: today's plan</h2><p>${D&&D.error?"Could not build the plan: "+esc(D.error):"Appears after the next gold refresh."}</p></section>`;
+  const P=D.plan||{},R=D.rules||{},f=v=>v==null?"–":Number(v).toFixed(2);
+  let h=`<section class="card"><h2>Daily 30: today's plan</h2>
+   <p style="margin:0 0 8px"><span class="pill ${P.status==="active"?"hit":P.status==="no trade"?"closed":"open"}">${esc(P.status||"")}</span> ${esc(P.message||"")}</p>
+   ${P.asia_high!=null?`<p class="soft" style="margin:0 0 8px">Asian range (05:30–12:30 IST): <strong>${f(P.asia_low)} – ${f(P.asia_high)}</strong> (${P.asia_range} pts) · day's pivot <strong>${f(P.pivot)}</strong> · hourly trend <strong>${P.bias?esc(P.bias):"none"}</strong> · normal daily move ${P.daily_atr} pts</p>`:""}
+   ${(P.setups||[]).length?`<div class="scroll"><table><thead><tr><th>Setup</th><th>When</th><th>Trigger</th><th class="r">Entry</th><th class="r">Target</th><th class="r">Stop</th></tr></thead><tbody>${P.setups.map(x=>`<tr><td><strong>${esc(x.name)}</strong></td><td>${esc(x.when)}</td><td>${esc(x.trigger)}</td><td class="r">${f(x.entry)}</td><td class="r pos">${f(x.target)}</td><td class="r neg">${f(x.stop)}</td></tr>`).join("")}</tbody></table></div>`:""}
+   <details style="margin-top:8px"><summary>The rules, as a pro would run them</summary><ol style="margin:6px 0 0 18px;line-height:1.55">
+   <li><strong>Mark the Asian range</strong> (high and low from 05:30 to 12:30 IST). Skip the day if it is under 8 points (dead market) or already most of a normal day's move.</li>
+   <li><strong>Trade only with the hourly trend</strong>: up if the 20-hour average is above the 50-hour and price is above it; down if the opposite; no trend = no trade.</li>
+   <li><strong>London (12:30–17:30): breakout and retest.</strong> Wait for a 15-min candle to <em>close</em> outside the range in the trend direction, then place a limit order back at the broken edge (2 points beyond it). Never chase the breakout candle.</li>
+   <li><strong>New York (18:00–22:30): pivot pullback.</strong> If London gave nothing, buy a dip to the day's pivot in an uptrend (sell a rally to it in a downtrend).</li>
+   <li><strong>Every trade: target ${R.target} points, stop ${R.stop} points</strong> set the moment you enter. At +${R.breakeven_at??"–"}, move the stop to your entry: the trade can no longer lose.</li>
+   <li><strong>Stop for the day</strong> at +${R.daily_goal}, after ${R.max_trades} trades, or at −${R.daily_max_loss}. Close anything open by 22:45 IST.</li>
+   <li><strong>News:</strong> no new trades 15 minutes either side of US CPI, jobs (NFP) or Fed decisions; gold can jump 30 points in seconds.</li>
+   <li><strong>Size from the stop:</strong> decide the most you will lose in a day (2 stops ≈ ${2*(R.stop||20)} points) and size so that is a small part of your account.</li></ol></details></section>`;
+  const B=D.backtest||{},base=B.base;
+  if(base){const row=(k,x)=>`<tr${k==="base"?' style="background:rgba(96,165,250,.08)"':""}><td>${esc(x.label)}</td><td class="r">${x.traded_days} / ${x.days}</td><td class="r">${x.goal_days}</td><td class="r">${x.red_days}</td><td class="r">${x.win_rate??"–"}%</td><td class="r ${x.total_points>=0?"pos":"neg"}">${x.total_points>=0?"+":""}${x.total_points}</td><td class="r">${x.avg_per_traded_day}</td><td class="r neg">${x.max_drawdown}</td><td class="r">${x.worst_losing_streak}</td></tr>`;
+    h+=`<section class="card"><h2>Daily 30: how these rules did (${esc(base.from||"")} to ${esc(base.to||"")})</h2>
+    <div class="tiles">${tile("Days traded",`${base.traded_days} of ${base.days}`)}${tile("Days reaching +30",`${base.goal_days} (${base.traded_days?Math.round(100*base.goal_days/base.traded_days):0}%)`,"g")}${tile("Losing days",base.red_days,"r")}${tile("Total points",(base.total_points>=0?"+":"")+base.total_points,base.total_points>=0?"g":"r")}${tile("Average per trading day",base.avg_per_traded_day)}${tile("Worst dip in the running total",base.max_drawdown,"r")}</div>
+    <div class="scroll" style="margin-top:10px"><table><thead><tr><th>Rule version</th><th class="r">Days traded</th><th class="r">Hit +30</th><th class="r">Losing days</th><th class="r">Trade win rate</th><th class="r">Total points</th><th class="r">Avg/traded day</th><th class="r">Worst dip</th><th class="r">Worst losing run</th></tr></thead><tbody>${Object.entries(B).map(([k,x])=>row(k,x)).join("")}</tbody></table></div>
+    <p class="soft" style="font-size:13px;margin:6px 0 0">Replayed on Yahoo's 15-min gold futures candles (about 60 days available), using only what was known at each moment. A candle that touches both target and stop counts as a loss. Spread 0.4 points per trade included. News days are not filtered in the test. Use the replay below to try your own settings or 2 years of hourly data.</p></section>`;}
+  return h;}
+function goldReplayHtml(){const p=GR.params,R=GR.res;const num=(k,l,st)=>`<label>${l}<input name="${k}" type="number" inputmode="decimal" step="${st||1}" value="${esc(String(p[k]??""))}"></label>`;
+  const chk=(k,l)=>`<label class="row" style="gap:6px;align-items:center;font-weight:400"><input type="checkbox" name="${k}" ${p[k]?"checked":""}> ${l}</label>`;
+  let h=`<section class="card"><h2>Gold replay: test the strategy your way</h2>
+   ${LOCAL?`<form id="goldRpF" class="row" style="gap:10px;align-items:flex-end;flex-wrap:wrap">
+    <label>Data<select name="timeframe"><option value="15m" ${p.timeframe!=="1h"?"selected":""}>15-min candles · last ~60 days (most precise)</option><option value="1h" ${p.timeframe==="1h"?"selected":""}>1-hour candles · last ~2 years</option></select></label>
+    ${num("days","Only the last N days (blank = all)")}${num("target","Target (points)")}${num("stop","Stop (points)")}${num("breakeven_at","Move stop to entry at (+points, 0 = never)")}
+    ${num("daily_goal","Stop for the day at + (points)")}${num("daily_max_loss","Stop for the day at − (points)")}${num("max_trades","Max trades a day")}${num("spread","Spread per trade",0.1)}${num("retest_pad","Retest entry beyond the range edge",0.5)}
+    <fieldset style="border:0;padding:0;margin:0;display:flex;gap:14px;flex-wrap:wrap"><legend class="sr">Options</legend>${chk("use_bias","Only trade with the hourly trend")}${chk("setup_a","London breakout-retest")}${chk("setup_b","New York pivot pullback")}</fieldset>
+    <button class="primary" ${GR.busy?"disabled":""}>${GR.busy?"Replaying…":"▶ Run replay"}</button><button type="button" data-grreset="1">Reset to the base rules</button></form>`
+   :`<p class="soft">Run replays in the Windows app; the latest result shows here.</p>`}
+   ${GR.err?`<p class="note bad">Replay failed: ${esc(GR.err)}</p>`:""}</section>`;
+  if(!R)return h+(GR.busy?`<p class="note">Replaying… the first run downloads about 2 years of gold candles and takes up to a minute.</p>`:"");
+  const r=R.rules||{};
+  h+=`<section class="card"><h2>Replay result · ${R.timeframe==="1h"?"1-hour":"15-min"} candles · ${esc(R.from||"")} to ${esc(R.to||"")}</h2>
+   <p class="soft" style="margin:0 0 8px">Target ${r.target} · stop ${r.stop} · breakeven ${r.breakeven_at??"off"} · day stops at +${r.daily_goal} / −${r.daily_max_loss} · up to ${r.max_trades} trades · spread ${r.spread} · ${r.use_bias?"with the trend only":"both directions"} · ${[r.setup_a&&"London",r.setup_b&&"New York"].filter(Boolean).join(" + ")} · run ${esc((R.generated_at||"").replace("T"," ").slice(0,16))}</p>
+   <div class="tiles">${tile("Days traded",`${R.traded_days} of ${R.days}`)}${tile(`Days reaching +${r.daily_goal}`,`${R.goal_days} (${R.traded_days?Math.round(100*R.goal_days/R.traded_days):0}%)`,"g")}${tile("Losing days",`${R.red_days} (${R.traded_days?Math.round(100*R.red_days/R.traded_days):0}%)`,"r")}${tile("Total points",(R.total_points>=0?"+":"")+R.total_points,R.total_points>=0?"g":"r")}${tile("Average per trading day",R.avg_per_traded_day)}${tile("Average per weekday",R.avg_per_calendar_day)}${tile("Trade win rate",(R.win_rate??"–")+"%")}${tile("Best / worst day",`${R.best_day} / ${R.worst_day}`)}${tile("Worst dip",R.max_drawdown,"r")}${tile("Worst losing run",R.worst_losing_streak+" days")}</div>
+   <h3 style="margin:12px 0 4px">Running total of points</h3>${eqSvg(R.curve)}
+   ${R.months&&R.months.length?`<h3 style="margin:12px 0 4px">By month</h3><div class="scroll"><table><thead><tr><th>Month</th><th class="r">Days traded</th><th class="r">Hit goal</th><th class="r">Losing days</th><th class="r">Points</th></tr></thead><tbody>${R.months.map(m=>`<tr><td>${esc(m.month)}</td><td class="r">${m.traded}</td><td class="r">${m.goal}</td><td class="r">${m.red}</td><td class="r ${m.points>=0?"pos":"neg"}">${m.points>=0?"+":""}${m.points}</td></tr>`).join("")}</tbody></table></div>`:""}
+   <details style="margin-top:10px"><summary>Day by day (${(R.log||[]).length} days)</summary><div class="scroll"><table><thead><tr><th>Day</th><th>Trend</th><th class="r">Points</th><th>Trades</th></tr></thead><tbody>
+   ${(R.log||[]).slice().reverse().map(x=>`<tr><td>${esc(x.day)}</td><td>${esc(x.bias||"")}</td><td class="r ${x.pnl>0?"pos":x.pnl<0?"neg":""}">${x.traded?(x.pnl>0?"+":"")+x.pnl:"–"}</td><td>${x.traded?x.trades.map(t=>`${esc(t.side.toUpperCase())} ${t.entry} at ${esc(t.time)} → ${esc(t.result)} ${t.points>0?"+":""}${t.points} <span class="soft">(${esc(t.setup.split(" ")[0])})</span>`).join("<br>"):`<span class="soft">no trade: ${esc(x.skip||"no setup triggered")}</span>`}</td></tr>`).join("")}
+   </tbody></table></div></details>
+   <p class="soft" style="font-size:13px;margin:8px 0 0">${R.timeframe==="1h"?"Hourly candles hide the order of moves inside each hour, so when both target and stop fall in the same hour it counts the stop: results here lean pessimistic. ":""}Past results don't promise future ones; news spikes and slippage at your broker can make real fills worse.</p></section>`;
+  return h;}
 var GOLD=null;
 function goldR(){const G=GOLD||{},L=G.levels||{};return{symbol:"XAUUSD",label:"Gold XAU/USD",_series:G.series||{},_slots:["m15_1","h1_5","d1_66"],
   entry_zone:L.buy?L.buy.zone:null,_sellzone:L.sell?L.sell.zone:null,target:null};}
@@ -803,6 +860,7 @@ gold(){
    ${LOCAL?`<p style="margin:8px 0 0"><button type="button" data-goldrun="1" ${G.busy?"disabled":""}>${G.busy?"Fetching gold…":"↻ Refresh gold now"}</button></p>`:""}</section>
   <div class="tiles">${tile("Price (USD/oz)",f(G.price))}${tile("Today",pc2(G.day_pct))}${tile("Week",pc2(G.week_pct))}${tile("Month",pc2(G.month_pct))}${tile("Year",pc2(G.year_pct))}${tile("In ₹ per 10 g (before duty/GST)",G.inr_per_10g?"₹"+G.inr_per_10g.toLocaleString("en-IN"):"–")}</div>
   <p class="note ${bcls==="hit"?"good":bcls==="closed"?"bad":""}" style="margin-top:10px"><strong>Overall: <span class="pill ${bcls}">${esc(G.bias)}</span></strong> · ${G.score>0?"+":""}${G.score} from ${G.votes.length} signals (trend, momentum, RSI, US dollar, US yields, news). Details below.</p>`;
+  h+=daily30Html(G)+goldReplayHtml();if(!GR.loaded)loadGR();
   const setup=(k,S,title)=>`<div style="flex:1;min-width:260px"><h3 style="margin:0 0 6px">${title}${lean===k?' <span class="pill hit">matches the bias</span>':lean?' <span class="pill open">against the bias</span>':""}</h3>
     <table><tbody><tr><td>${k==="buy"?"Buy":"Sell"} zone</td><td class="r"><strong>${f(S.zone[0])} – ${f(S.zone[1])}</strong></td></tr>
     <tr><td>Stop-loss</td><td class="r neg">${f(S.stop)}</td></tr><tr><td>Target 1</td><td class="r pos">${f(S.t1)} <span class="soft">(reward ${S.rr1}× risk)</span></td></tr>
@@ -1190,6 +1248,9 @@ window.addEventListener("resize",()=>{if(FS&&$("#fsDlg").open){const r=chartSubj
 main.addEventListener("submit",e=>{
   e.preventDefault(); const f=e.target;
   if(f.id==="anaF"){runAnalyze($("#anaQ").value);return;}
+  if(f.id==="goldRpF"){const fd=new FormData(f),p={};for(const k of Object.keys(GR.params)){const el=f.elements[k];if(!el)continue;p[k]=el.type==="checkbox"?el.checked:el.value;}
+    GR.params=p;try{localStorage.setItem("gold-replay-params",JSON.stringify(p));}catch(er){}GR.busy=true;GR.err=null;render();
+    fetch("/api/gold/replay",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(p)}).then(()=>setTimeout(loadGR,2500)).catch(er=>{GR.busy=false;GR.err=String(er);render();});return;}
   if(f.id==="ghF"){(async()=>{const g={owner:$("#ghOwner").value.trim().replace(/^@/,""),repo:$("#ghRepo").value.trim(),token:$("#ghTok").value.trim()};
     $("#ghOut").textContent="Checking…";GH=g;
     try{const r=await fetch(`https://api.github.com/repos/${encodeURIComponent(g.owner)}/${encodeURIComponent(g.repo)}`,{headers:ghHeaders(false)});
@@ -1228,6 +1289,7 @@ main.addEventListener("submit",e=>{
 main.addEventListener("click",async e=>{
   const t=e.target;
   const fsb=t.closest&&t.closest("[data-fs]");if(fsb){const[sy,sl]=fsb.dataset.fs.split("|");openFs(sy,+sl,fsb);return;}
+  const grr=t.closest&&t.closest("[data-grreset]");if(grr){GR.params={timeframe:"15m",days:"",target:30,stop:20,breakeven_at:15,daily_goal:30,daily_max_loss:40,max_trades:2,spread:0.4,retest_pad:2,use_bias:true,setup_a:true,setup_b:true};try{localStorage.removeItem("gold-replay-params");}catch(er){}render();return;}
   const gr=t.closest&&t.closest("[data-goldrun]");if(gr){gr.disabled=true;gr.textContent="Fetching gold…";fetch("/api/gold/run",{method:"POST"}).catch(()=>{});setTimeout(pollGold,25000);return;}
   const aw=t.closest&&t.closest("[data-askwhy]");if(aw){openChat();me("Why is "+aw.dataset.askwhy+" invalid? Is it OK to hold?");whyInvalid(aw.dataset.askwhy);return;}
   const fo=t.closest&&t.closest("[data-fold]");if(fo){setFold(fo,fo.getAttribute("aria-expanded")!=="true");saveFold();return;}
