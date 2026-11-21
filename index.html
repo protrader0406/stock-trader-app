@@ -52,7 +52,7 @@ nav a[aria-current="page"]{color:var(--accent-ink);background:linear-gradient(90
 .foldbtn{flex:none;min-width:34px;min-height:34px;padding:0 8px;margin-right:6px;font-size:16px;line-height:1;border-radius:8px}
 .foldbar{display:flex;gap:6px;flex-wrap:wrap;margin:0 0 10px}
 .sortbtn{all:unset;cursor:pointer;font:inherit;font-weight:600;white-space:nowrap}.sortbtn:focus-visible{outline:2px solid var(--blue);outline-offset:2px;border-radius:4px}
-.chart{margin:8px 0 4px}.chart svg{width:100%;max-width:420px;height:auto;display:block}.chart figcaption{font-size:13px;color:var(--soft);margin-top:2px}
+.charts{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:10px;margin:8px 0 4px}.chart{margin:0}.chart svg{width:100%;height:auto;display:block;background:rgba(255,255,255,.02);border-radius:8px}.chart figcaption{font-size:13px;color:var(--soft);margin-top:2px}
 .pos{color:var(--good)}.neg{color:var(--bad)}.soft{color:var(--soft)}.amb{color:var(--warn)}
 .note{border-left:4px solid var(--warn);background:var(--warn-bg);padding:10px 12px;border-radius:8px;margin:0}
 .note.bad{border-color:var(--bad);background:var(--bad-bg)}
@@ -402,6 +402,7 @@ async function saveGHBook(){
   ghWriting=false;}
 async function pollPhone(){if(!GH)return;let changed=false;
   try{const sc=await ghRaw("app_payload.json");if(sc&&sc.as_of&&sc.top&&(!LIVE||sc.generated_at!==LIVE.generated_at)){LIVE=sc;applyScan();changed=true;}
+    const chs=await ghRaw("charts.json").catch(()=>null);if(chs&&chs.ts&&(!CHARTS||chs.ts!==CHARTS.ts)){CHARTS=chs;changed=true;}
     const q=await ghRaw("quotes.json");if(q&&q.prices&&(!QUOTES||q.ts!==QUOTES.ts)){QUOTES=q;applyQuotes();changed=true;}
     const bt=await ghRaw("backtest_month.json").catch(()=>null);if(bt&&(!BT.res||bt.generated_at!==BT.res.generated_at)){BT.res=bt;BT.loaded=true;changed=true;}
     const by=await ghRaw("backtest_year.json").catch(()=>null);if(by&&(!BT.year||by.generated_at!==BT.year.generated_at)){BT.year=by;changed=true;}
@@ -432,6 +433,7 @@ async function pollLocal(){
   let changed=false;
   const sc=await getJSON("/api/scan");
   if(sc&&sc.as_of&&sc.top&&(!LIVE||sc.generated_at!==LIVE.generated_at)){LIVE=sc;applyScan();changed=true;}
+  const ch=await getJSON("/api/charts");if(ch&&ch.ts&&(!CHARTS||ch.ts!==CHARTS.ts)){CHARTS=ch;changed=true;}
   const q=await getJSON("/api/quotes");
   if(q&&q.prices&&(!QUOTES||q.ts!==QUOTES.ts)){QUOTES=q;applyQuotes();checkAlerts();changed=true;}
   const bk=await getJSON("/api/book");
@@ -581,22 +583,29 @@ function makeFoldable(root){let n=0;
     const first=secs.find(s=>s.querySelector(".foldbtn"));if(first)first.before(bar);}}
 function setFold(b,open){const body=document.getElementById(b.getAttribute("aria-controls"));if(!body)return;body.hidden=!open;b.setAttribute("aria-expanded",String(open));b.textContent=open?"▾":"▸";
   b.setAttribute("aria-label",(open?"Hide ":"Show ")+b.getAttribute("aria-label").replace(/^(Show|Hide) /,""));open?FOLD.delete(b.dataset.fold):FOLD.add(b.dataset.fold);}
-function candleSvg(r){const c=r.candles;if(!c||c.length<3)return"";
+var CHARTS=null;
+function candleFig(r,c,title,o){if(!c||c.length<3)return `<figure class="chart"><figcaption><strong>${title}</strong>: appears after the next price update.</figcaption></figure>`;
   const W=360,H=130,L=6,R=48,T=8,Bm=18,n=c.length,z=r.entry_zone||[];
   let lo=Math.min(...c.map(x=>x[3])),hi=Math.max(...c.map(x=>x[2]));
-  if(z[0]&&z[0]>lo*0.97)lo=Math.min(lo,z[0]);if(r.target&&r.target<hi*1.03)hi=Math.max(hi,r.target);
+  if(z[0]&&z[0]>lo*0.97&&z[0]<hi*1.03)lo=Math.min(lo,z[0]);if(z[1]&&z[1]<hi*1.03&&z[1]>lo*0.97)hi=Math.max(hi,z[1]);if(r.target&&r.target<hi*1.03&&r.target>lo)hi=Math.max(hi,r.target);
   const pad=(hi-lo)*0.06||1;lo-=pad;hi+=pad;
-  const y=v=>T+(hi-v)/(hi-lo)*(H-T-Bm),step=(W-L-R)/n,cw=Math.max(3,step*0.6),x=i=>L+step*i+step/2;
-  const band=`<rect x="${L+step*(n-3)}" y="${T}" width="${step*3}" height="${H-T-Bm}" fill="rgba(96,165,250,.12)"/><text x="${L+step*(n-1.5)}" y="${T+10}" text-anchor="middle" font-size="10" fill="#9aa4b2">last 3 days</text>`;
-  const zoneR=z[0]&&z[1]?`<rect x="${L}" y="${y(z[1])}" width="${W-L-R}" height="${Math.max(1,y(z[0])-y(z[1]))}" fill="rgba(52,211,153,.13)"/><text x="${W-R+3}" y="${y((z[0]+z[1])/2)+3}" font-size="10" fill="#34d399">buy zone</text>`:"";
-  const tgt=r.target&&r.target<=hi?`<line x1="${L}" x2="${W-R}" y1="${y(r.target)}" y2="${y(r.target)}" stroke="#fbbf24" stroke-dasharray="4 3"/><text x="${W-R+3}" y="${y(r.target)+3}" font-size="10" fill="#fbbf24">+${cur().target_pct||3}%</text>`:"";
-  const bars=c.map((k,i)=>{const[,o,h,l,cl]=k,up=cl>=o,col=up?"#34d399":"#fb7185",top=y(Math.max(o,cl)),ht=Math.max(1,Math.abs(y(o)-y(cl)));
+  const y=v=>T+(hi-v)/(hi-lo)*(H-T-Bm),step=(W-L-R)/n,cw=Math.max(1.5,step*0.6),x=i=>L+step*i+step/2,clamp=v=>Math.max(T,Math.min(H-Bm,v));
+  let deco="";
+  if(o.last3) deco+=`<rect x="${L+step*(n-3)}" y="${T}" width="${step*3}" height="${H-T-Bm}" fill="rgba(96,165,250,.12)"/><text x="${L+step*(n-1.5)}" y="${T+10}" text-anchor="middle" font-size="10" fill="#9aa4b2">last 3 days</text>`;
+  if(o.daySplit){let prev=null;c.forEach((k,i)=>{const d=k[0].slice(0,5);if(prev&&d!==prev)deco+=`<line x1="${L+step*i}" x2="${L+step*i}" y1="${T}" y2="${H-Bm}" stroke="#9aa4b2" stroke-opacity=".35" stroke-dasharray="2 3"/><text x="${L+step*i+3}" y="${T+10}" font-size="10" fill="#9aa4b2">${d}</text>`;prev=d;});}
+  if(z[0]&&z[1]&&z[1]>lo&&z[0]<hi) deco+=`<rect x="${L}" y="${clamp(y(z[1]))}" width="${W-L-R}" height="${Math.max(1,clamp(y(z[0]))-clamp(y(z[1])))}" fill="rgba(52,211,153,.13)"/><text x="${W-R+3}" y="${clamp(y((z[0]+z[1])/2))+3}" font-size="10" fill="#34d399">buy zone</text>`;
+  if(r.target&&r.target<=hi&&r.target>=lo) deco+=`<line x1="${L}" x2="${W-R}" y1="${y(r.target)}" y2="${y(r.target)}" stroke="#fbbf24" stroke-dasharray="4 3"/><text x="${W-R+3}" y="${y(r.target)+3}" font-size="10" fill="#fbbf24">+${cur().target_pct||3}%</text>`;
+  const bars=c.map((k,i)=>{const[,op,h,l,cl]=k,up=cl>=op,col=up?"#34d399":"#fb7185",top=y(Math.max(op,cl)),ht=Math.max(1,Math.abs(y(op)-y(cl)));
     return `<line x1="${x(i)}" x2="${x(i)}" y1="${y(h)}" y2="${y(l)}" stroke="${col}"/><rect x="${x(i)-cw/2}" y="${top}" width="${cw}" height="${ht}" fill="${col}"/>`;}).join("");
-  const last=c.slice(-3),prev=c[n-4]?c[n-4][4]:last[0][1];
-  const desc=last.map((k,i)=>{const p=i?last[i-1][4]:prev,ch=(100*(k[4]/p-1));return `${k[0].slice(5)} close ${k[4].toFixed(2)} (${ch>=0?"+":""}${ch.toFixed(1)}%)`;}).join(", ");
-  const lab=`Daily candles for ${r.symbol}, ${c[0][0]} to ${c[n-1][0]}. Last 3 days: ${desc}.`;
-  return `<figure class="chart"><svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(lab)}">${band}${zoneR}${tgt}${bars}<text x="${L}" y="${H-5}" font-size="10" fill="#9aa4b2">${c[0][0].slice(5)}</text><text x="${W-R}" y="${H-5}" font-size="10" text-anchor="end" fill="#9aa4b2">${c[n-1][0].slice(5)}</text></svg>
-   <figcaption>Last ${n} trading days (daily candles; green = closed up, red = down). Last 3 days: ${esc(desc)}. Full chart: ${tvLink(r.symbol)}</figcaption></figure>`;}
+  const f=v=>v.toFixed(2),ch=(a,b)=>{const p=100*(a/b-1);return (p>=0?"+":"")+p.toFixed(1)+"%";};
+  const lastC=c[n-1][4],firstO=c[0][1],H2=Math.max(...c.map(k=>k[2])),L2=Math.min(...c.map(k=>k[3]));
+  const desc=`from ${c[0][0]} to ${c[n-1][0]}: opened ${f(firstO)}, now ${f(lastC)} (${ch(lastC,firstO)}), high ${f(H2)}, low ${f(L2)}`;
+  return `<figure class="chart"><figcaption style="margin:0 0 2px"><strong>${title}</strong></figcaption><svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(title+" for "+r.symbol+", "+desc)}">${deco}${bars}<text x="${L}" y="${H-5}" font-size="10" fill="#9aa4b2">${esc(o.lab(c[0][0]))}</text><text x="${W-R}" y="${H-5}" font-size="10" text-anchor="end" fill="#9aa4b2">${esc(o.lab(c[n-1][0]))}</text></svg>
+   <figcaption>${esc(desc[0].toUpperCase()+desc.slice(1))}.</figcaption></figure>`;}
+function candleSvg(r){const C=CHARTS||{},m=(C.m15||{})[r.symbol],w=(C.w1||{})[r.symbol];
+  if(!(r.candles&&r.candles.length)&&!m&&!w)return"";
+  return `<div class="charts">${candleFig(r,r.candles,"1-day candles · last 15 days",{last3:true,lab:d=>d.slice(5)})}${candleFig(r,m,"15-min candles · last 3 days",{daySplit:true,lab:d=>d})}${candleFig(r,w,"Weekly candles · last 20 weeks",{lab:d=>d.slice(2)})}</div>
+   <p class="soft" style="margin:0 0 6px;font-size:13px">Green = closed up, red = closed down. Shaded green band = buy zone, dashed line = +${cur().target_pct||3}% target. ${C.ts?`15-min and weekly from ${esc(C.ts.replace("T"," ").slice(0,16))}. `:""}Full chart: ${tvLink(r.symbol)}</p>`;}
 function levelsBlock(r){if(r.ema50==null&&r.ath==null)return `<p class="soft" style="margin:6px 0 0;font-size:14px">EMA, all-time high and low appear from the next scan.</p>`;
   const px=(cmpOf(r.symbol)||{}).p||r.close, rel=v=>v?`<span class="${px>=v?"pos":"neg"}">${px>=v?"above":"below"}</span>`:"";
   const pct=(a,b)=>((a/b-1)*100).toFixed(1), hl=(h,l)=>h!=null&&l!=null?`${h.toFixed(2)} / ${l.toFixed(2)} <span class="soft">· ${pct(px,h)}% from high</span>`:"next scan";
