@@ -288,9 +288,9 @@ function passFlt(r){return(!FLT.zone.length||FLT.zone.includes(zoneKey(r)))&&(!F
 function csvCell(v){v=v==null?"":String(v);return /[",\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v;}
 function top20Csv(rows){const d=cur(),t=d.target_pct,Z={in:"In zone",near:"Near zone",out:"Not in zone",invalid:"Invalid"};
   const out=[[`Close of ${d.as_of}; Nifty ${d.regime}; data Yahoo Finance (unofficial); not advice`],
-   ["Rank","Symbol","Company","Sector","Score","Buy zone","Close","Entry zone low","Entry zone high",`+${t}% level`,"Gap for next parts %","Lot 2 at","Lot 3 at","Next results","News to check","CMP","CMP time","50 EMA","200 EMA","52W high","52W low","All-time high","ATH month","All-time low","ATL month","Why listed","Buy-zone status"]];
+   ["Rank","Symbol","Company","Sector","Score","Buy zone","Close","Entry zone low","Entry zone high",`+${t}% level`,"Gap for next parts %","Lot 2 at","Lot 3 at","Next results","News to check","CMP","CMP time","50 EMA","200 EMA","Week high","Week low","Month high","Month low","52W high","52W low","All-time high","ATH month","All-time low","ATL month","Why listed","Buy-zone status","Quality bar"]];
   for(const r of rows){const z=r.entry_zone||[],ne=r.next_entries||[];
-    out.push([r.rank,r.symbol,r.name,r.sector,r.score,Z[zoneKey(r)],r.close,z[0],z[1],r.target,r.step?r.step.step:"",ne[0],ne[1],r.next_results,r.news_flag||"",(cmpOf(r.symbol)||{}).p,((cmpOf(r.symbol)||{}).ts||"").replace("T"," ").slice(0,16),r.ema50,r.ema200,r.high52,r.low52,r.ath,r.ath_date,r.atl,r.atl_date,(r.why||[]).join(" | "),r.zone]);}
+    out.push([r.rank,r.symbol,r.name,r.sector,r.score,Z[zoneKey(r)],r.close,z[0],z[1],r.target,r.step?r.step.step:"",ne[0],ne[1],r.next_results,r.news_flag||"",(cmpOf(r.symbol)||{}).p,((cmpOf(r.symbol)||{}).ts||"").replace("T"," ").slice(0,16),r.ema50,r.ema200,r.week_high,r.week_low,r.month_high,r.month_low,r.high52,r.low52,r.ath,r.ath_date,r.atl,r.atl_date,(r.why||[]).join(" | "),r.zone,(r.quality_issues||[]).length?"Misses: "+r.quality_issues.join("; "):"Passes"]);}
   return "\ufeff"+out.map(r=>r.map(csvCell).join(",")).join("\r\n");}
 async function downloadText(name,text,type){
   if(!LOCAL&&window.claude&&claude.use){const dl=await claude.use("downloads");if(!dl)throw new Error("unavailable");
@@ -344,7 +344,7 @@ function applyScan(){
   }
   if(changed) persist();
 }
-const PAGES=[["top20","Top stocks"],["analyze","Analyze other stocks"],["book","Positions"],["perf","Performance"],["invalid","Became invalid"],["buy","Add buy"],["calc","Calculator"],["ledger","History"],["setup","Setup"],["faq","FAQ"]];
+const PAGES=[["top20","All 80+ stocks"],["best20","Top 20"],["analyze","Analyze other stocks"],["book","Positions"],["perf","Performance"],["invalid","Became invalid"],["buy","Add buy"],["calc","Calculator"],["ledger","History"],["setup","Setup"],["faq","FAQ"]];
 const KEY="tranche-book-v1";
 let B=newBook(), cloudRef=null, writing=false, dirty=false, flash=null, scanNote="";
 const REASSESS=["I re-read the latest results and announcements: fundamentals are still healthy.",
@@ -551,10 +551,12 @@ function cmpLine(r){const q=cmpOf(r.symbol);if(!q)return `<p class="soft" style=
 function t3(){return (cur().target_pct||3);}
 function levelsBlock(r){if(r.ema50==null&&r.ath==null)return `<p class="soft" style="margin:6px 0 0;font-size:14px">EMA, all-time high and low appear from the next scan.</p>`;
   const px=(cmpOf(r.symbol)||{}).p||r.close, rel=v=>v?`<span class="${px>=v?"pos":"neg"}">${px>=v?"above":"below"}</span>`:"";
-  const pct=(a,b)=>((a/b-1)*100).toFixed(1);
+  const pct=(a,b)=>((a/b-1)*100).toFixed(1), hl=(h,l)=>h!=null&&l!=null?`${h.toFixed(2)} / ${l.toFixed(2)} <span class="soft">· ${pct(px,h)}% from high</span>`:"next scan";
   return `<div class="levels"><div><dt>50 EMA</dt><dd>${r.ema50!=null?r.ema50.toFixed(2)+" · price "+rel(r.ema50):"–"}</dd></div>
    <div><dt>200 EMA</dt><dd>${r.ema200!=null?r.ema200.toFixed(2)+" · price "+rel(r.ema200):"–"}</dd></div>
-   <div><dt>52-week high / low</dt><dd>${r.high52!=null?r.high52.toFixed(2)+" / "+r.low52.toFixed(2):"–"}</dd></div>
+   <div><dt>Week high / low</dt><dd>${hl(r.week_high,r.week_low)}</dd></div>
+   <div><dt>Month high / low</dt><dd>${hl(r.month_high,r.month_low)}</dd></div>
+   <div><dt>Year (52-week) high / low</dt><dd>${hl(r.high52,r.low52)}</dd></div>
    <div><dt>All-time high</dt><dd>${r.ath!=null?r.ath.toFixed(2)+` <span class="soft">${esc(r.ath_date||"")} · ${pct(px,r.ath)}% from it</span>`:"–"}</dd></div>
    <div><dt>All-time low</dt><dd>${r.atl!=null?r.atl.toFixed(2)+` <span class="soft">${esc(r.atl_date||"")}</span>`:"–"}</dd></div></div>
    ${r.since?`<p class="soft" style="margin:2px 0 0;font-size:13px">All-time = Yahoo Finance history since ${esc(r.since)}, adjusted for splits.</p>`:""}`;}
@@ -566,6 +568,7 @@ function stockCard(r,t,opt){const rd=READ[r.colour]||READ.GREY, inv=opt&&opt.own
    <div class="row" style="align-items:center;gap:10px"><span class="score" style="background:${r.score>=88?"var(--good)":r.score>=84?"var(--accent)":"var(--accent2)"}" aria-label="Score ${r.score.toFixed(0)} of 100">${r.score.toFixed(0)}</span><h2 style="margin:0">${typeof r.rank==="number"?r.rank+". ":""}${esc(r.symbol)}</h2>${tvLink(r.symbol)}</div><span class="pill ${inv&&inv.hard?"closed":rd[0]}">${inv&&inv.hard?"Invalid":rd[1]}</span></div>
    <p class="soft" style="margin:2px 0 8px">${esc(r.name||"")}${r.sector?" · "+esc(r.sector):""}${mine?" · <strong>you hold this</strong>":""}</p>
    ${inv?`<p class="note ${inv.hard?"bad":""}" style="margin:0 0 8px">${esc(inv.why)}</p>`:""}
+   ${(r.quality_issues||[]).length?`<p class="note" style="margin:0 0 8px"><strong>Misses the quality bar:</strong> ${esc(r.quality_issues.join("; "))}. Scores ${r.score.toFixed(0)}, but the company is smaller, more indebted or less profitable than the rules prefer. Size it smaller or skip.</p>`:""}
    ${cmpLine(r)}
    <p style="margin:0 0 8px"><strong>${esc(zone)}</strong></p>
    <div class="lot" style="border-top:0;padding:0"><dl>
@@ -669,6 +672,15 @@ async function runAnalyze(q){q=(q||"").trim();if(!q||ANA.busy)return;ANA.busy=q;
   ANA.busy="";if(r.ok){ANA.items=[r.item,...ANA.items.filter(x=>x.symbol!==r.item.symbol)];setTimeout(pollLocal,20000);}else ANA.err=r.error||"Could not analyse that stock.";
   render();const el=$("#anaQ");if(el&&!r.ok)el.focus();}
 const VIEWS={
+best20(){
+  const d=cur(),t=d.target_pct,list=d.top.slice(0,20);
+  let h=`<section><h2>Top 20 by score</h2><p class="soft" style="margin:0">Close of ${esc(d.as_of)} · Nifty: ${esc(d.regime)} · only stocks that pass the quality bar, ranked by score. The full list of every ${d.min_score||80}+ stock is on the "All 80+ stocks" tab.</p></section>`;
+  if(d.regime==="bearish") h+=`<p class="note bad"><strong>NO TRADE.</strong> The Nifty is in a downtrend by this tool's rules. The list is for reference only.</p>`;
+  h+=`<section class="card"><div class="scroll"><table><thead><tr><th>#</th><th>Stock</th><th class="r">Score</th><th>Buy zone</th><th class="r">Close</th><th class="r">Week H / L</th><th class="r">Month H / L</th><th class="r">Year H / L</th></tr></thead><tbody>
+  ${list.map((r,i)=>{const f=(a,b)=>a!=null&&b!=null?`${a.toFixed(1)} / ${b.toFixed(1)}`:"–";return `<tr><td>${i+1}</td><td><strong>${esc(r.symbol)}</strong> ${tvLink(r.symbol)}</td><td class="r">${r.score.toFixed(0)}</td><td>${esc((READ[r.colour]||READ.GREY)[1])}</td><td class="r">${Number(r.close).toFixed(2)}</td><td class="r">${f(r.week_high,r.week_low)}</td><td class="r">${f(r.month_high,r.month_low)}</td><td class="r">${f(r.high52,r.low52)}</td></tr>`;}).join("")}
+  </tbody></table></div><div class="row" style="gap:6px;margin-top:8px"><button type="button" data-dl="csv20">⬇ Download top 20 (Excel CSV)</button></div></section>`;
+  return h+list.map(r=>stockCard(r,t)).join("");
+},
 faq(){
   const t=cur().target_pct||3, m=cur().min_score||80;
   const q=(title,body,open)=>`<details class="card faq" ${open?"open":""}><summary>${title}</summary><div class="faqA">${body}</div></details>`;
@@ -749,8 +761,9 @@ analyze(){
 top20(){
   const d=cur(),v=d.validation||{},t=d.target_pct,age=daysOld(d.as_of),ch=d.changes||{invalid:[],dropped:[],new:[]};
   const minS=d.min_score||80, list=d.top.filter(r=>r.score>=minS), below=d.top.filter(r=>r.score<minS);
+  const nAll=list.length+(d.quality_misses||[]).length;
   const g=list.filter(r=>r.colour==="GREEN").length, y=list.filter(r=>r.colour==="YELLOW").length;
-  let h=`<section><h2>Stocks scoring ${minS}+ that can reach +${t}% within ${d.horizon} sessions</h2>
+  let h=`<section><h2>All ${nAll} stocks scoring ${minS}+ (${list.length} pass the quality bar)</h2>
   <p class="soft" style="margin:0">Close of ${esc(d.as_of)} · updated each weekday evening from your laptop · ${d.universe_scanned} Nifty 500 stocks scanned · Nifty: ${esc(d.regime)} · data: Yahoo Finance and Google News (unofficial).</p></section>`;
   if(scanNote) h+=`<p class="note">${esc(scanNote)}</p>`;
   if(age>4) h+=`<p class="note bad"><strong>This list is ${age} days old.</strong> The laptop has not sent a new scan. Check that it was on after 6 PM on a weekday and that "Set up daily scan" was run once.</p>`;
@@ -765,18 +778,21 @@ top20(){
   }
   h+=`<p class="note">${g?`<strong>${g} in the buy zone</strong> (every entry check passed).`:"None is in the buy zone today."} ${y?y+" close to it.":""} Read the news under each stock before buying. Confirm every price at your broker.</p>`;
   const card=r=>stockCard(r,t);
-  const fc=(grp,k,l)=>{const on=FLT[grp].includes(k),n=d.top.filter(r=>(grp==="zone"?zoneKey(r):scoreKey(r))===k).length;
+  const ALL=d.top.concat(d.quality_misses||[]);const fc=(grp,k,l)=>{const on=FLT[grp].includes(k),n=ALL.filter(r=>(grp==="zone"?zoneKey(r):scoreKey(r))===k).length;
     return `<button type="button" class="fchip${on?" on":""}" aria-pressed="${on}" data-flt="${grp}" data-val="${k}">${on?"✓ ":""}${esc(l)} <span class="cnt">${n}</span></button>`;};
-  const shown=d.top.filter(passFlt), fl=list.filter(passFlt), fb=below.filter(passFlt), anyF=FLT.zone.length||FLT.score.length;
+  const shown=ALL.filter(passFlt), fl=list.filter(passFlt), fb=below.filter(passFlt), anyF=FLT.zone.length||FLT.score.length;
   h+=`<section class="card filters" aria-label="Filter the list"><div class="fgroup" role="group" aria-label="Buy zone"><span class="flabel">Buy zone</span>${ZONE_CH.map(([k,l])=>fc("zone",k,l)).join("")}</div>
    <div class="fgroup" role="group" aria-label="Score"><span class="flabel">Score</span>${SCORE_CH.map(([k,l])=>fc("score",k,l)).join("")}</div>
-   <div class="row" style="align-items:center;justify-content:space-between;gap:8px;margin-top:6px"><span class="soft" role="status">Showing ${shown.length} of ${d.top.length}${anyF?" · pick several in a row to combine them":""}</span>
+   <div class="row" style="align-items:center;justify-content:space-between;gap:8px;margin-top:6px"><span class="soft" role="status">Showing ${shown.length} of ${ALL.length}${anyF?" · pick several in a row to combine them":""}</span>
    ${anyF?'<button type="button" data-flt="clear">Clear filters</button>':""}</div>
    <div class="row" style="gap:6px;margin-top:8px"><button type="button" data-dl="csv">⬇ Download table (Excel CSV)</button>${anyF?'<button type="button" data-dl="csvf">⬇ Download filtered rows</button>':""}
    ${LOCAL?'<button type="button" data-wa-open="1">📲 Send to my WhatsApp</button><a class="btn" href="/download/report.html" download>⬇ Full report (HTML)</a><a class="btn" href="/download/performance.csv" download>⬇ Performance (CSV)</a>':""}</div></section>`;
   h+=LOCAL?waChooser():"";
   h+=fl.length?fl.map(card).join(""):`<section class="card"><p>${list.length?"No stock matches these filters.":`No stock scores ${minS} or more today. Holding cash is a valid choice.`}</p></section>`;
   if(fb.length) h+=`<details class="card" ${FLT.score.includes("lt80")?"open":""}><summary>${fb.length} more from this list score below ${minS}</summary>${fb.map(card).join("")}</details>`;
+  const qm=(d.quality_misses||[]).filter(passFlt);
+  if(qm.length) h+=`<section><h2 style="margin-top:18px">Also scoring ${minS}+, but missing the quality bar (${qm.length})</h2><p class="soft" style="margin:0 0 8px">These pass the price and momentum checks but fail one company-strength check (size, debt, return on equity or cash flow). The reason is on each card. They carry more risk than the list above.</p></section>`+qm.map(card).join("");
+  else if((d.quality_misses||[]).length===0&&d.quality_on&&!("quality_misses" in d)) h+=`<p class="note">Stocks that score ${minS}+ but miss the quality bar will appear here from the next scan.</p>`;
   const still=(d.tracked||[]).filter(x=>!d.top.some(r=>r.symbol===x.symbol));
   if(still.length){const pc2=v=>v==null?"–":`<span class="${v>0?"pos":v<0?"neg":""}">${v>0?"+":""}${Number(v).toFixed(2)}%</span>`;
     h+=`<section class="card"><h2>Still on your list from earlier days</h2><p class="soft" style="margin:0 0 8px">Not in today's top 20, but still valid, so they stay until they fail a check.</p>
@@ -1025,8 +1041,8 @@ main.addEventListener("click",async e=>{
   if(fb){const g=fb.dataset.flt;if(g==="clear"){FLT.zone=[];FLT.score=[];}else{const a=FLT[g],k=fb.dataset.val,i=a.indexOf(k);i<0?a.push(k):a.splice(i,1);}
     saveFlt();render();const again=g==="clear"?null:document.querySelector(`[data-flt="${g}"][data-val="${fb.dataset.val}"]`);if(again)again.focus();return;}
   const db=t.closest&&t.closest("[data-dl]");
-  if(db){const d=cur(),rows=db.dataset.dl==="csvf"?d.top.filter(passFlt):d.top;
-    try{await downloadText(`top20_${d.as_of}${db.dataset.dl==="csvf"?"_filtered":""}.csv`,top20Csv(rows),"text/csv");}catch(er){flash={cls:"bad",msg:"Download was blocked here. Use the Windows app."};render();}return;}
+  if(db){const d=cur(),all=d.top.concat(d.quality_misses||[]),rows=db.dataset.dl==="csvf"?all.filter(passFlt):db.dataset.dl==="csv20"?d.top.slice(0,20):all;
+    try{await downloadText(`${db.dataset.dl==="csv20"?"top20":"stocks_80plus"}_${d.as_of}${db.dataset.dl==="csvf"?"_filtered":""}.csv`,top20Csv(rows),"text/csv");}catch(er){flash={cls:"bad",msg:"Download was blocked here. Use the Windows app."};render();}return;}
   const ar=t.closest&&t.closest("[data-ana-refresh]");if(ar){runAnalyze(ar.dataset.anaRefresh);return;}
   const am=t.closest&&t.closest("[data-ana-remove]");
   if(am){const sym=am.dataset.anaRemove;await fetch("/api/analyze/remove",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({symbol:sym})}).catch(()=>{});
