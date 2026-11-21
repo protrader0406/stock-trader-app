@@ -53,6 +53,8 @@ nav a[aria-current="page"]{color:var(--accent-ink);background:linear-gradient(90
 .foldbtn{flex:none;min-width:34px;min-height:34px;padding:0 8px;margin-right:6px;font-size:16px;line-height:1;border-radius:8px}
 .foldbar{display:flex;gap:6px;flex-wrap:wrap;margin:0 0 10px}
 .sortbtn{all:unset;cursor:pointer;font:inherit;font-weight:600;white-space:nowrap}.sortbtn:focus-visible{outline:2px solid var(--blue);outline-offset:2px;border-radius:4px}
+.chartbar{display:flex;gap:6px;align-items:center;margin:0 0 4px}.chartbar .rangesel{flex:1;margin:0}.fsbtn{flex:none;min-width:38px;min-height:34px;padding:0 8px;font-size:17px;line-height:1}
+#fsDlg{width:100vw;max-width:100vw;height:100vh;max-height:100vh;margin:0;padding:14px 18px;border:0;background:var(--bg,#0b1220);color:inherit}#fsDlg::backdrop{background:rgba(0,0,0,.7)}#fsDlg .fsh{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:8px}#fsDlg .chart svg{max-height:calc(100vh - 190px)}
 .rangesel{width:100%;margin:0 0 4px;font-size:14px;padding:6px 8px}.pats{margin:4px 0 0;padding:0;list-style:none;font-size:13px;line-height:1.45}
 .charts{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:10px;margin:8px 0 4px}.chart{margin:0}.chart svg{width:100%;height:auto;display:block;background:rgba(255,255,255,.02);border-radius:8px}.chart figcaption{font-size:13px;color:var(--soft);margin-top:2px}
 .pos{color:var(--good)}.neg{color:var(--bad)}.soft{color:var(--soft)}.amb{color:var(--warn)}
@@ -149,6 +151,7 @@ a.btn:hover,a.btn:focus-visible{border-color:var(--accent)}
 <button id="fab" class="fab" aria-label="Open Sto-Bot" aria-expanded="false" aria-controls="chat">
   <svg viewBox="0 0 24 24" width="28" height="28" aria-hidden="true"><path fill="currentColor" d="M4 4h16a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H9l-5 4v-4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2zm3 6.5a1.5 1.5 0 1 0 0 .01zm5 0a1.5 1.5 0 1 0 0 .01zm5 0a1.5 1.5 0 1 0 0 .01z"/></svg>
 </button>
+<dialog id="fsDlg" aria-labelledby="fsT"><div class="fsh"><h2 id="fsT" style="margin:0">Chart</h2><button type="button" id="fsX" class="primary">✕ Close full screen</button></div><div id="fsBody"></div><p class="soft" style="font-size:13px;margin:6px 0 0">Press Esc or the Close button to go back.</p></dialog>
 <section id="chat" class="chat" role="dialog" aria-label="Sto-Bot" hidden>
   <div class="chat-h"><strong>🤖 Sto-Bot</strong><span class="soft" style="font-size:12.5px">no Claude usage</span><button id="chatX" aria-label="Close Sto-Bot">✕</button></div>
   <div id="log" class="chat-log" role="log" aria-live="polite"></div>
@@ -351,7 +354,7 @@ function applyScan(){
   }
   if(changed) persist();
 }
-const PAGES=[["top20","All 80+ stocks"],["best20","Top 20"],["sectors","Sector wise"],["analyze","Analyze other stocks"],["book","Positions"],["perf","Performance"],["invalid","Became invalid"],["buy","Add buy"],["ledger","History"],["setup","Setup"],["faq","FAQ"]];
+const PAGES=[["top20","All 80+ stocks"],["best20","Top 20"],["sectors","Sector wise"],["gold","Gold XAU/USD"],["analyze","Analyze other stocks"],["book","Positions"],["perf","Performance"],["invalid","Became invalid"],["buy","Add buy"],["ledger","History"],["setup","Setup"],["faq","FAQ"]];
 const KEY="tranche-book-v1";
 let B=newBook(), cloudRef=null, writing=false, dirty=false, flash=null, scanNote="";
 const REASSESS=["I re-read the latest results and announcements: fundamentals are still healthy.",
@@ -525,7 +528,7 @@ function render(){
   $("#nav").innerHTML=PAGES.map(([id,t])=>`<a href="#${id}" ${id===p?'aria-current="page"':""}>${t}</a>`).join("");
   $("#tape").innerHTML=tape();
   main.innerHTML=(flash?`<p class="note ${flash.cls}" role="status">${esc(flash.msg)}</p>`:"")+VIEWS[p]();
-  if(p==="top20"||p==="best20"||p==="sectors") makeFoldable(main);
+  if(p==="top20"||p==="best20"||p==="sectors"||p==="gold") makeFoldable(main);
   flash=null;if(p==="setup"){fillWa();fillCloud();}
 }
 const tile=(k,v,c)=>`<div class="tile ${c||""}"><div class="k">${esc(k)}</div><div class="v">${v}</div></div>`;
@@ -586,13 +589,19 @@ function makeFoldable(root){let n=0;
     const first=secs.find(s=>s.querySelector(".foldbtn"));if(first)first.before(bar);}}
 function setFold(b,open){const body=document.getElementById(b.getAttribute("aria-controls"));if(!body)return;body.hidden=!open;b.setAttribute("aria-expanded",String(open));b.textContent=open?"▾":"▸";
   b.setAttribute("aria-label",(open?"Hide ":"Show ")+b.getAttribute("aria-label").replace(/^(Show|Hide) /,""));open?FOLD.delete(b.dataset.fold):FOLD.add(b.dataset.fold);}
+var GOLD=null;
+function goldR(){const G=GOLD||{},L=G.levels||{};return{symbol:"XAUUSD",label:"Gold XAU/USD",_series:G.series||{},_slots:["m15_1","h1_5","d1_66"],
+  entry_zone:L.buy?L.buy.zone:null,_sellzone:L.sell?L.sell.zone:null,target:null};}
+async function pollGold(){let g=null;if(LOCAL)g=await getJSON("/api/gold");else if(GH)g=await ghRaw("gold.json").catch(()=>null);
+  if(g&&g.ts&&(!GOLD||g.ts!==GOLD.ts||g.busy!==GOLD.busy)){GOLD=g;if(page()==="gold"&&!(typing&&typing()))render();}}
+setInterval(()=>{if(page()==="gold"||!GOLD)pollGold();},LOCAL?60000:300000);setTimeout(pollGold,1500);
 var CHARTS=null;
 const RANGES=[["m15_1","15-min · 1 day","m15",1],["m15_3","15-min · 3 days","m15",3],["m15_5","15-min · 5 days","m15",5],
  ["h1_5","1-hour · 1 week","h1",5],["h1_22","1-hour · 1 month","h1",22],
  ["d1_15","1-day · 15 days","d1",15],["d1_22","1-day · 1 month","d1",22],["d1_66","1-day · 3 months","d1",66],["d1_126","1-day · 6 months","d1",126],["d1_250","1-day · 1 year","d1",250],
  ["w1_20","Weekly · 20 weeks","w1",20],["w1_52","Weekly · 1 year","w1",52],["w1_156","Weekly · 3 years","w1",156]];
 const SLOT_DEF=["d1_15","m15_3","w1_20"],CHSEL={};
-function seriesFor(r,key){const R=RANGES.find(x=>x[0]===key)||RANGES[5],C=CHARTS||{};let c=(C[R[2]]||{})[r.symbol];
+function seriesFor(r,key){const R=RANGES.find(x=>x[0]===key)||RANGES[5],C=CHARTS||{};let c=r._series?r._series[R[2]]:(C[R[2]]||{})[r.symbol];
   if(R[2]==="d1"&&(!c||!c.length))c=r.candles;if(!c||!c.length)return{c:null,R};
   if(R[2]==="m15"||R[2]==="h1"){const days=[...new Set(c.map(k=>k[0].slice(0,5)))].slice(-R[3]);c=c.filter(k=>days.includes(k[0].slice(0,5)));}else c=c.slice(-R[3]);
   return{c,R};}
@@ -624,17 +633,19 @@ function patterns(c,unit){if(!c||c.length<5)return[];const out=[],n=c.length,O=i
     if(a.length===2&&a[1]-a[0]>=4&&Math.abs(Lo(a[1])/Lo(a[0])-1)<0.015){const pk=Math.max(...c.slice(a[0],a[1]+1).map(k=>k[2]));if(pk>Lo(a[0])*1.03&&C(l)>Lo(a[1]))out.push({name:"Possible double bottom: two similar lows, a base forming",tone:"bull"});}
     if(b.length===2&&b[1]-b[0]>=4&&Math.abs(H(b[1])/H(b[0])-1)<0.015){const tr=Math.min(...c.slice(b[0],b[1]+1).map(k=>k[3]));if(tr<H(b[0])*0.97&&C(l)<H(b[1]))out.push({name:"Possible double top: two similar highs, a ceiling",tone:"bear"});}}
   return out.sort((x,y)=>(x.tone==="neutral")-(y.tone==="neutral"));}
-function candleFig(r,slot){const key=CHSEL[r.symbol+"|"+slot]||SLOT_DEF[slot],{c,R}=seriesFor(r,key),unit=R[2]==="m15"?"15-min bar":R[2]==="h1"?"hour":R[2]==="w1"?"week":"day";
-  const sel=`<label class="sr" for="rg-${esc(r.symbol)}-${slot}">Time range for chart ${slot+1} of ${esc(r.symbol)}</label><select id="rg-${esc(r.symbol)}-${slot}" class="rangesel" data-range="${esc(r.symbol)}" data-slot="${slot}">${RANGES.map(x=>`<option value="${x[0]}" ${x[0]===key?"selected":""}>${x[1]}</option>`).join("")}</select>`;
-  if(!c||c.length<3)return `<figure class="chart" data-fig="${esc(r.symbol)}|${slot}">${sel}<figcaption>No ${esc(R[1])} data yet. It appears after the next price update on your laptop.</figcaption></figure>`;
-  const W=360,H=130,L=6,Rm=48,T=8,Bm=18,n=c.length,z=r.entry_zone||[];
+function candleFig(r,slot,big){const key=CHSEL[r.symbol+"|"+slot]||(r._slots||SLOT_DEF)[slot],{c,R}=seriesFor(r,key),unit=R[2]==="m15"?"15-min bar":R[2]==="h1"?"hour":R[2]==="w1"?"week":"day";
+  const pre=big?"fsrg-":"rg-",nm=r.label||r.symbol,fsb=big?"":`<button type="button" class="fsbtn" data-fs="${esc(r.symbol)}|${slot}" aria-label="Show this ${esc(nm)} chart full screen" title="Full screen">⛶</button>`;
+  const sel=`<div class="chartbar"><label class="sr" for="${pre}${esc(r.symbol)}-${slot}">Time range for chart ${slot+1} of ${esc(nm)}</label><select id="${pre}${esc(r.symbol)}-${slot}" class="rangesel" data-range="${esc(r.symbol)}" data-slot="${slot}"${big?' data-big="1"':""}>${RANGES.map(x=>`<option value="${x[0]}" ${x[0]===key?"selected":""}>${x[1]}</option>`).join("")}</select>${fsb}</div>`;
+  if(!c||c.length<3)return `<figure class="chart" data-fig="${esc(r.symbol)}|${slot}${big?"|big":""}">${sel}<figcaption>No ${esc(R[1])} data yet. It appears after the next price update on your laptop.</figcaption></figure>`;
+  const W=big?1000:360,H=big?Math.round(1000*Math.min(0.62,Math.max(0.35,(innerHeight-230)/Math.max(320,innerWidth-40)))):130,L=6,Rm=big?70:48,T=8,Bm=18,n=c.length,z=r.entry_zone||[];
   let lo=Math.min(...c.map(x=>x[3])),hi=Math.max(...c.map(x=>x[2]));
-  if(z[0]&&z[0]>lo*0.97&&z[0]<hi*1.03)lo=Math.min(lo,z[0]);if(z[1]&&z[1]<hi*1.03&&z[1]>lo*0.97)hi=Math.max(hi,z[1]);if(r.target&&r.target<hi*1.03&&r.target>lo)hi=Math.max(hi,r.target);
+  if(r._sellzone&&r._sellzone[1]<hi*1.02&&r._sellzone[1]>lo)hi=Math.max(hi,r._sellzone[1]);if(z[0]&&z[0]>lo*0.97&&z[0]<hi*1.03)lo=Math.min(lo,z[0]);if(z[1]&&z[1]<hi*1.03&&z[1]>lo*0.97)hi=Math.max(hi,z[1]);if(r.target&&r.target<hi*1.03&&r.target>lo)hi=Math.max(hi,r.target);
   const pad=(hi-lo)*0.06||1;lo-=pad;hi+=pad;
   const y=v=>T+(hi-v)/(hi-lo)*(H-T-Bm),step=(W-L-Rm)/n,cw=Math.max(1,step*0.6),x=i=>L+step*i+step/2,clamp=v=>Math.max(T,Math.min(H-Bm,v));
   let deco="";
   if(R[2]==="d1"&&n<=30) deco+=`<rect x="${L+step*(n-3)}" y="${T}" width="${step*3}" height="${H-T-Bm}" fill="rgba(96,165,250,.12)"/><text x="${L+step*(n-1.5)}" y="${T+10}" text-anchor="middle" font-size="10" fill="#9aa4b2">last 3 days</text>`;
   if(R[2]==="m15"||(R[2]==="h1"&&R[3]<=5)){let prev=null;c.forEach((k,i)=>{const d=k[0].slice(0,5);if(prev&&d!==prev)deco+=`<line x1="${L+step*i}" x2="${L+step*i}" y1="${T}" y2="${H-Bm}" stroke="#9aa4b2" stroke-opacity=".35" stroke-dasharray="2 3"/><text x="${L+step*i+3}" y="${T+10}" font-size="10" fill="#9aa4b2">${d}</text>`;prev=d;});}
+  const sz=r._sellzone||[];if(sz[0]&&sz[1]&&sz[1]>lo&&sz[0]<hi) deco+=`<rect x="${L}" y="${clamp(y(sz[1]))}" width="${W-L-Rm}" height="${Math.max(1,clamp(y(sz[0]))-clamp(y(sz[1])))}" fill="rgba(251,113,133,.13)"/><text x="${W-Rm+3}" y="${clamp(y((sz[0]+sz[1])/2))+3}" font-size="10" fill="#fb7185">sell zone</text>`;
   if(z[0]&&z[1]&&z[1]>lo&&z[0]<hi) deco+=`<rect x="${L}" y="${clamp(y(z[1]))}" width="${W-L-Rm}" height="${Math.max(1,clamp(y(z[0]))-clamp(y(z[1])))}" fill="rgba(52,211,153,.13)"/><text x="${W-Rm+3}" y="${clamp(y((z[0]+z[1])/2))+3}" font-size="10" fill="#34d399">buy zone</text>`;
   if(r.target&&r.target<=hi&&r.target>=lo) deco+=`<line x1="${L}" x2="${W-Rm}" y1="${y(r.target)}" y2="${y(r.target)}" stroke="#fbbf24" stroke-dasharray="4 3"/><text x="${W-Rm+3}" y="${y(r.target)+3}" font-size="10" fill="#fbbf24">+${cur().target_pct||3}%</text>`;
   const bars=c.map((k,i)=>{const[,op,h,l,cl]=k,up=cl>=op,col=up?"#34d399":"#fb7185",top=y(Math.max(op,cl)),ht=Math.max(1,Math.abs(y(op)-y(cl)));
@@ -644,11 +655,16 @@ function candleFig(r,slot){const key=CHSEL[r.symbol+"|"+slot]||SLOT_DEF[slot],{c
   const desc=`from ${c[0][0]} to ${c[n-1][0]}: opened ${f(firstO)}, now ${f(lastC)} (${ch(lastC,firstO)}), high ${f(H2)}, low ${f(L2)}`;
   const lab=d=>R[2]==="m15"||R[2]==="h1"?d:d.slice(2);
   const pts=patterns(c,unit);
-  return `<figure class="chart" data-fig="${esc(r.symbol)}|${slot}">${sel}<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(R[1]+" candles for "+r.symbol+", "+desc)}">${deco}${bars}<text x="${L}" y="${H-5}" font-size="10" fill="#9aa4b2">${esc(lab(c[0][0]))}</text><text x="${W-Rm}" y="${H-5}" font-size="10" text-anchor="end" fill="#9aa4b2">${esc(lab(c[n-1][0]))}</text></svg>
+  return `<figure class="chart${big?" big":""}" data-fig="${esc(r.symbol)}|${slot}${big?"|big":""}">${sel}<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(R[1]+" candles for "+nm+", "+desc)}">${deco}${bars}<text x="${L}" y="${H-5}" font-size="10" fill="#9aa4b2">${esc(lab(c[0][0]))}</text><text x="${W-Rm}" y="${H-5}" font-size="10" text-anchor="end" fill="#9aa4b2">${esc(lab(c[n-1][0]))}</text></svg>
    <figcaption>${esc(desc[0].toUpperCase()+desc.slice(1))}.</figcaption>
    ${pts.length?`<ul class="pats" aria-label="Patterns spotted on this chart">${pts.map(p=>`<li class="${p.tone==="bull"?"pos":p.tone==="bear"?"neg":"soft"}">${p.tone==="bull"?"▲":p.tone==="bear"?"▼":"●"} ${esc(p.name)}</li>`).join("")}</ul>`:""}</figure>`;}
+function chartSubject(sym){if(sym==="XAUUSD")return goldR();const d=cur();return d.top.concat(d.quality_misses||[]).find(x=>x.symbol===sym)||(typeof ANA!=="undefined"&&ANA.items||[]).find(x=>x.symbol===sym);}
+var FS=null;
+function openFs(sym,slot,opener){const r=chartSubject(sym);if(!r)return;FS={sym,slot,opener};const dl=$("#fsDlg");
+  $("#fsT").textContent=`${r.label||r.symbol} · chart ${slot+1}`;$("#fsBody").innerHTML=candleFig(r,slot,true);dl.showModal();$("#fsX").focus();}
+function closeFs(){const dl=$("#fsDlg");if(dl.open)dl.close();}
 function candleSvg(r){const C=CHARTS||{};
-  if(!(r.candles&&r.candles.length)&&!(C.m15||{})[r.symbol]&&!(C.d1||{})[r.symbol])return"";
+  if(!r._series&&!(r.candles&&r.candles.length)&&!(C.m15||{})[r.symbol]&&!(C.d1||{})[r.symbol])return"";
   return `<div class="charts">${[0,1,2].map(i=>candleFig(r,i)).join("")}</div>
    <p class="soft" style="margin:0 0 6px;font-size:13px">Pick any time range in each box. Green = closed up, red = closed down. Shaded green band = buy zone, dashed line = +${cur().target_pct||3}% target. ▲ bullish, ▼ bearish, ● neutral: simple rule checks on the candles shown, not a forecast. ${C.ts?`Intraday data from ${esc(C.ts.replace("T"," ").slice(0,16))}. `:""}Full chart: ${tvLink(r.symbol)}</p>`;}
 function levelsBlock(r){if(r.ema50==null&&r.ath==null)return `<p class="soft" style="margin:6px 0 0;font-size:14px">EMA, all-time high and low appear from the next scan.</p>`;
@@ -662,7 +678,7 @@ function levelsBlock(r){if(r.ema50==null&&r.ath==null)return `<p class="soft" st
    <div><dt>All-time high</dt><dd>${r.ath!=null?r.ath.toFixed(2)+` <span class="soft">${esc(r.ath_date||"")} · ${pct(px,r.ath)}% from it</span>`:"–"}</dd></div>
    <div><dt>All-time low</dt><dd>${r.atl!=null?r.atl.toFixed(2)+` <span class="soft">${esc(r.atl_date||"")}</span>`:"–"}</dd></div></div>
    ${r.since?`<p class="soft" style="margin:2px 0 0;font-size:13px">All-time = Yahoo Finance history since ${esc(r.since)}, adjusted for splits.</p>`:""}`;}
-function tvSym(sym){return "NSE:"+String(sym).replace(/[&-]/g,"_");}
+function tvSym(sym){if(sym==="XAUUSD")return "OANDA:XAUUSD";return "NSE:"+String(sym).replace(/[&-]/g,"_");}
 function tvLink(sym){return `<a class="tvl" href="https://www.tradingview.com/chart/?symbol=${encodeURIComponent(tvSym(sym))}" target="_blank" rel="noopener" aria-label="Open the ${esc(sym)} chart on TradingView (new window)">📈 Chart</a>`;}
 function stockCard(r,t,opt){const rd=READ[r.colour]||READ.GREY, inv=opt&&opt.own?((r.vetoes||[]).length?{hard:true,why:r.vetoes.join("; ")}:/down/i.test(r.state||"")?{hard:false,why:"Price structure is trending down: not a buy under these rules."}:null):invalidity(r.symbol), mine=held(B).includes(r.symbol);
    const why=r.why||fallbackWhy(r,t), zone=r.zone||fallbackZone(r);
@@ -775,6 +791,52 @@ async function runAnalyze(q){q=(q||"").trim();if(!q||ANA.busy)return;ANA.busy=q;
   ANA.busy="";if(r.ok){ANA.items=[r.item,...ANA.items.filter(x=>x.symbol!==r.item.symbol)];setTimeout(pollLocal,20000);}else ANA.err=r.error||"Could not analyse that stock.";
   render();const el=$("#anaQ");if(el&&!r.ok)el.focus();}
 const VIEWS={
+gold(){
+  const G=GOLD;
+  if(!G||!G.tech)return `<section class="card"><h2>Gold · XAU/USD</h2><p>${LOCAL?"Fetching gold prices for the first time. This takes about 30 seconds.":"Gold data appears after your laptop sends it (the app refreshes gold every 15 minutes while it is open)."}</p>${LOCAL?'<button type="button" data-goldrun="1">↻ Fetch gold now</button>':""}</section>`;
+  const T=G.tech,L=G.levels,f=v=>v==null?"–":Number(v).toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2});
+  const pc2=v=>v==null?"–":`<span class="${v>0?"pos":v<0?"neg":""}">${v>0?"+":""}${Number(v).toFixed(2)}%</span>`;
+  const bcls=/Buy|buy/.test(G.bias)?"hit":/Sell|sell/.test(G.bias)?"closed":"open";
+  const age=G.ts?Math.round((Date.now()-new Date(G.ts))/60000):null;
+  const lean=G.score>0?"buy":G.score<0?"sell":null;
+  let h=`<section><h2>Gold · XAU/USD</h2><p class="soft" style="margin:0">${esc(G.source)}. Updated ${esc((G.ts||"").replace("T"," ").slice(0,16))}${age!=null&&age>30?` <span class="amb">(${age} min ago)</span>`:""}. Levels are rule-based reference points, not advice. Gold trading with leverage (CFDs, futures, MCX) can lose more than you put in.</p>
+   ${LOCAL?`<p style="margin:8px 0 0"><button type="button" data-goldrun="1" ${G.busy?"disabled":""}>${G.busy?"Fetching gold…":"↻ Refresh gold now"}</button></p>`:""}</section>
+  <div class="tiles">${tile("Price (USD/oz)",f(G.price))}${tile("Today",pc2(G.day_pct))}${tile("Week",pc2(G.week_pct))}${tile("Month",pc2(G.month_pct))}${tile("Year",pc2(G.year_pct))}${tile("In ₹ per 10 g (before duty/GST)",G.inr_per_10g?"₹"+G.inr_per_10g.toLocaleString("en-IN"):"–")}</div>
+  <p class="note ${bcls==="hit"?"good":bcls==="closed"?"bad":""}" style="margin-top:10px"><strong>Overall: <span class="pill ${bcls}">${esc(G.bias)}</span></strong> · ${G.score>0?"+":""}${G.score} from ${G.votes.length} signals (trend, momentum, RSI, US dollar, US yields, news). Details below.</p>`;
+  const setup=(k,S,title)=>`<div style="flex:1;min-width:260px"><h3 style="margin:0 0 6px">${title}${lean===k?' <span class="pill hit">matches the bias</span>':lean?' <span class="pill open">against the bias</span>':""}</h3>
+    <table><tbody><tr><td>${k==="buy"?"Buy":"Sell"} zone</td><td class="r"><strong>${f(S.zone[0])} – ${f(S.zone[1])}</strong></td></tr>
+    <tr><td>Stop-loss</td><td class="r neg">${f(S.stop)}</td></tr><tr><td>Target 1</td><td class="r pos">${f(S.t1)} <span class="soft">(reward ${S.rr1}× risk)</span></td></tr>
+    <tr><td>Target 2</td><td class="r pos">${f(S.t2)} <span class="soft">(${S.rr2}×)</span></td></tr></tbody></table><p class="soft" style="font-size:13px;margin:6px 0 0">Built from the ${esc(S.basis)}.</p></div>`;
+  h+=`<section class="card"><h2>Levels to buy or sell</h2><p class="soft" style="margin:0 0 8px">Wait for the price to come into a zone; don't chase. Price now ${f(G.price)}. ${lean?`The signals lean to <strong>${lean}</strong>, so the ${lean} setup is the one in step with the trend; the other is a counter-trend trade (smaller size, quicker exit).`:"Signals are balanced: range trading between the two zones is the usual approach."}</p>
+   <div class="row" style="gap:16px;align-items:flex-start">${setup("buy",L.buy,"Buy setup (long)")}${setup("sell",L.sell,"Sell setup (short)")}</div></section>`;
+  const pv=(P,nm)=>`<tr><th scope="row">${nm}</th>${["S3","S2","S1","P","R1","R2","R3"].map(k=>`<td class="r ${G.price>=P[k]?"":"soft"}">${f(P[k])}</td>`).join("")}</tr>`;
+  h+=`<section class="card"><h2>Pivot points, support and resistance</h2><div class="scroll"><table><thead><tr><th></th><th class="r">S3</th><th class="r">S2</th><th class="r">S1</th><th class="r">Pivot</th><th class="r">R1</th><th class="r">R2</th><th class="r">R3</th></tr></thead><tbody>${pv(L.pivots_daily,"Daily")}${pv(L.pivots_weekly,"Weekly")}</tbody></table></div>
+   <p style="margin:8px 0 0">Recent swing supports (below the price): <strong>${L.supports.length?L.supports.map(f).join(", "):"none close"}</strong> · swing resistances (above): <strong>${L.resistances.length?L.resistances.map(f).join(", "):"none close: price is near its highs"}</strong></p>
+   <p class="soft" style="font-size:13px;margin:4px 0 0">Pivots use the previous day's and week's high, low and close. Dim numbers are above the current price. S = support, R = resistance.</p></section>`;
+  h+=`<section class="card"><h2>Charts and patterns</h2>${candleSvg(goldR()).replace(/\+3% target\./,"").replace("Shaded green band = buy zone, dashed line = ","Green band = buy zone, red band = sell zone. ")}</section>`;
+  const rd=v=>v>=70?'<span class="neg">overbought</span>':v<=30?'<span class="pos">oversold</span>':v>55?'<span class="pos">bullish</span>':v<45?'<span class="neg">bearish</span>':"neutral";
+  const row=(a,b,c)=>`<tr><td>${a}</td><td class="r">${b}</td><td>${c}</td></tr>`;
+  h+=`<section class="card"><h2>Technical indicators</h2><div class="scroll"><table><thead><tr><th>Indicator</th><th class="r">Value</th><th>Reading</th></tr></thead><tbody>
+   ${row("RSI 14 (daily)",T.rsi,rd(T.rsi)+(T.rsi>T.rsi_prev?" · rising":" · falling"))}${row("RSI 14 (hourly)",T.rsi_hourly??"–",T.rsi_hourly!=null?rd(T.rsi_hourly):"")}${row("RSI 14 (weekly)",T.rsi_weekly??"–",T.rsi_weekly!=null?rd(T.rsi_weekly):"")}
+   ${row("MACD (12,26,9)",`${T.macd} / ${T.macd_signal}`,(T.macd_hist>0?'<span class="pos">above signal: momentum up</span>':'<span class="neg">below signal: momentum down</span>')+(Math.abs(T.macd_hist)<Math.abs(T.macd_hist_prev)?" · weakening":" · strengthening"))}
+   ${row("Stochastic %K / %D",`${T.stoch_k} / ${T.stoch_d}`,T.stoch_k>80?'<span class="neg">overbought</span>':T.stoch_k<20?'<span class="pos">oversold</span>':T.stoch_k>T.stoch_d?"turning up":"turning down")}
+   ${row("ADX (trend strength)",T.adx,T.adx>=25?"strong trend":T.adx>=18?"moderate trend":"weak trend, range likely")}
+   ${row("Bollinger bands (20, 2)",`${f(T.bb_lower)} – ${f(T.bb_upper)}`,G.price>T.bb_upper?'<span class="neg">above the upper band: stretched</span>':G.price<T.bb_lower?'<span class="pos">below the lower band: stretched down</span>':`inside the bands (middle ${f(T.bb_mid)})`)}
+   ${row("20-day average",f(T.ema20),G.price>T.ema20?'<span class="pos">price above</span>':'<span class="neg">price below</span>')}${row("50-day average",f(T.ema50),G.price>T.ema50?'<span class="pos">price above</span>':'<span class="neg">price below</span>')}${row("200-day average",f(T.ema200),G.price>T.ema200?'<span class="pos">price above</span>':'<span class="neg">price below</span>')}
+   ${row("ATR 14 (typical daily range)",f(T.atr),T.atr_pct+"% of the price: size your stop-loss at least this wide")}
+   ${row("20-day high / low",`${f(T.high_20d)} / ${f(T.low_20d)}`,G.price>=T.high_20d*0.998?"at the 20-day high":G.price<=T.low_20d*1.002?"at the 20-day low":"")}${row("52-week high / low",`${f(T.high_52w)} / ${f(T.low_52w)}`,`${((G.price/T.high_52w-1)*100).toFixed(1)}% from the high`)}
+   </tbody></table></div></section>`;
+  h+=`<section class="card"><h2>Why the overall reading is "${esc(G.bias)}"</h2><div class="scroll"><table><thead><tr><th>Signal</th><th>Vote</th><th>Why</th></tr></thead><tbody>${G.votes.map(v=>`<tr><td>${esc(v.signal)}</td><td>${v.vote>0?'<span class="pos">▲ for gold</span>':v.vote<0?'<span class="neg">▼ against</span>':'<span class="soft">● neutral</span>'}</td><td>${esc(v.why)}</td></tr>`).join("")}</tbody></table></div>
+   <p class="soft" style="font-size:13px;margin:6px 0 0">Each signal votes +1, 0 or −1. A total of +3 or more = Buy bias, −3 or less = Sell bias, in between = Leaning or Neutral.</p></section>`;
+  const D=G.drivers||{},dr=(nm,x,unit,good)=>`<tr><td>${nm}</td><td class="r">${x&&x.last!=null?x.last+unit:"–"}</td><td class="r">${x?pc2(x.chg_5d):"–"}</td><td class="r">${x?pc2(x.chg_1m):"–"}</td><td>${good}</td></tr>`;
+  h+=`<section class="card"><h2>Fundamental drivers of gold</h2><p class="soft" style="margin:0 0 8px">Gold has no earnings, so its "fundamentals" are the forces that move it: the US dollar, US interest rates, demand for safety, central-bank buying and, for Indian buyers, the rupee.</p><div class="scroll"><table><thead><tr><th>Driver</th><th class="r">Now</th><th class="r">5 days</th><th class="r">1 month</th><th>Usual effect on gold</th></tr></thead><tbody>
+   ${dr("US dollar index (DXY)",D.dxy,"","Dollar up → gold usually down (gold is priced in dollars)")}${dr("US 10-year yield",D.us10y,"%","Yields up → gold usually down (gold pays no interest)")}${dr("USD/INR",D.usdinr,"","Rupee weaker → gold dearer in India even if XAU/USD is flat")}${dr("Silver (USD/oz)",D.silver,"","Usually moves with gold, but more sharply")}
+   </tbody></table></div><p style="margin:8px 0 0">Gold/silver ratio: <strong>${G.gold_silver_ratio??"–"}</strong> <span class="soft">(above about 80 = gold expensive vs silver; below about 60 = cheap).</span> Indian price ≈ <strong>${G.inr_per_10g?"₹"+G.inr_per_10g.toLocaleString("en-IN"):"–"}</strong> per 10 g before import duty and GST, so MCX and jewellers' rates are higher.</p></section>`;
+  const N=G.news||[];
+  h+=`<section class="card"><h2>Gold news (last 4 days)</h2><p style="margin:0 0 8px">${G.news_pos} read good for the gold price, ${G.news_neg} bad, ${N.length-G.news_pos-G.news_neg} neutral. <span class="soft">Read from the headline's wording only.</span></p>
+   ${N.length?`<ul class="plain">${N.map(n=>`<li style="margin-bottom:6px">${n.tone==="positive"?'<span class="pos">▲ good</span>':n.tone==="negative"?'<span class="neg">▼ bad</span>':'<span class="soft">● neutral</span>'} <a href="${esc(n.url||"#")}" target="_blank" rel="noopener">${esc(n.title)}</a> <span class="soft">· ${esc(n.source||"")} ${esc((n.when||"").replace("T"," "))}</span></li>`).join("")}</ul>`:"<p>No headlines found.</p>"}</section>`;
+  return h;
+},
 sectors(){
   const d=cur(),t=d.target_pct,minS=d.min_score||80,all=d.top.concat(d.quality_misses||[]).filter(r=>r.score>=minS),S=d.sectors||[];
   const groups={};for(const r of all){(groups[r.sector||"Other"]=groups[r.sector||"Other"]||[]).push(r);}
@@ -1116,10 +1178,15 @@ function refreshBuyCheck(){
   $("#buyBtn").disabled=!(c.allowed&&ticked);
 }
 main.addEventListener("input",e=>{if(e.target.closest("#buyF"))refreshBuyCheck();});
-main.addEventListener("change",e=>{const sl=e.target.closest&&e.target.closest("[data-range]");if(!sl)return;const sym=sl.dataset.range,slot=+sl.dataset.slot;
-  CHSEL[sym+"|"+slot]=sl.value;const d=cur(),r=d.top.concat(d.quality_misses||[]).find(x=>x.symbol===sym)||(typeof ANA!=="undefined"&&ANA.items||[]).find(x=>x.symbol===sym);if(!r)return;
-  const fig=sl.closest("[data-fig]");const tmp=document.createElement("div");tmp.innerHTML=candleFig(r,slot);fig.replaceWith(tmp.firstElementChild);
-  const again=document.getElementById(sl.id);if(again)again.focus();});
+function onRange(e){const sl=e.target.closest&&e.target.closest("[data-range]");if(!sl)return;const sym=sl.dataset.range,slot=+sl.dataset.slot,big=!!sl.dataset.big;
+  CHSEL[sym+"|"+slot]=sl.value;const r=chartSubject(sym);if(!r)return;
+  const fig=sl.closest("[data-fig]");const tmp=document.createElement("div");tmp.innerHTML=candleFig(r,slot,big);fig.replaceWith(tmp.firstElementChild);
+  const again=document.getElementById(sl.id);if(again)again.focus();
+  if(big){const card=main.querySelector(`[data-fig="${sym}|${slot}"]`);if(card){const t2=document.createElement("div");t2.innerHTML=candleFig(r,slot);card.replaceWith(t2.firstElementChild);}}}
+main.addEventListener("change",onRange);$("#fsDlg").addEventListener("change",onRange);
+$("#fsX").addEventListener("click",closeFs);
+$("#fsDlg").addEventListener("close",()=>{$("#fsBody").innerHTML="";if(FS){const b=main.querySelector(`[data-fs="${FS.sym}|${FS.slot}"]`);if(b)b.focus();FS=null;}});
+window.addEventListener("resize",()=>{if(FS&&$("#fsDlg").open){const r=chartSubject(FS.sym);if(r){$("#fsBody").innerHTML=candleFig(r,FS.slot,true);}}});
 main.addEventListener("submit",e=>{
   e.preventDefault(); const f=e.target;
   if(f.id==="anaF"){runAnalyze($("#anaQ").value);return;}
@@ -1160,6 +1227,8 @@ main.addEventListener("submit",e=>{
 });
 main.addEventListener("click",async e=>{
   const t=e.target;
+  const fsb=t.closest&&t.closest("[data-fs]");if(fsb){const[sy,sl]=fsb.dataset.fs.split("|");openFs(sy,+sl,fsb);return;}
+  const gr=t.closest&&t.closest("[data-goldrun]");if(gr){gr.disabled=true;gr.textContent="Fetching gold…";fetch("/api/gold/run",{method:"POST"}).catch(()=>{});setTimeout(pollGold,25000);return;}
   const aw=t.closest&&t.closest("[data-askwhy]");if(aw){openChat();me("Why is "+aw.dataset.askwhy+" invalid? Is it OK to hold?");whyInvalid(aw.dataset.askwhy);return;}
   const fo=t.closest&&t.closest("[data-fold]");if(fo){setFold(fo,fo.getAttribute("aria-expanded")!=="true");saveFold();return;}
   const fa=t.closest&&t.closest("[data-foldall]");if(fa){const open=fa.dataset.foldall==="open";main.querySelectorAll(".foldbtn").forEach(b=>setFold(b,open));saveFold();return;}
