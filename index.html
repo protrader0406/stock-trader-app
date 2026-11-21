@@ -49,6 +49,10 @@ nav a[aria-current="page"]{color:var(--accent-ink);background:linear-gradient(90
 .tile .v{font:500 19px/1.3 var(--mono);font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
 .num{font-family:var(--mono);font-variant-numeric:tabular-nums}
 .big{font:600 26px/1.1 var(--mono);font-variant-numeric:tabular-nums}
+.foldbtn{flex:none;min-width:34px;min-height:34px;padding:0 8px;margin-right:6px;font-size:16px;line-height:1;border-radius:8px}
+.foldbar{display:flex;gap:6px;flex-wrap:wrap;margin:0 0 10px}
+.sortbtn{all:unset;cursor:pointer;font:inherit;font-weight:600;white-space:nowrap}.sortbtn:focus-visible{outline:2px solid var(--blue);outline-offset:2px;border-radius:4px}
+.chart{margin:8px 0 4px}.chart svg{width:100%;max-width:420px;height:auto;display:block}.chart figcaption{font-size:13px;color:var(--soft);margin-top:2px}
 .pos{color:var(--good)}.neg{color:var(--bad)}.soft{color:var(--soft)}.amb{color:var(--warn)}
 .note{border-left:4px solid var(--warn);background:var(--warn-bg);padding:10px 12px;border-radius:8px;margin:0}
 .note.bad{border-color:var(--bad);background:var(--bad-bg)}
@@ -516,6 +520,7 @@ function render(){
   $("#nav").innerHTML=PAGES.map(([id,t])=>`<a href="#${id}" ${id===p?'aria-current="page"':""}>${t}</a>`).join("");
   $("#tape").innerHTML=tape();
   main.innerHTML=(flash?`<p class="note ${flash.cls}" role="status">${esc(flash.msg)}</p>`:"")+VIEWS[p]();
+  if(p==="top20"||p==="best20") makeFoldable(main);
   flash=null;if(p==="setup"){fillWa();fillCloud();}
 }
 const tile=(k,v,c)=>`<div class="tile ${c||""}"><div class="k">${esc(k)}</div><div class="v">${v}</div></div>`;
@@ -561,6 +566,37 @@ function picksSection(){
   <section class="card"><div class="scroll"><table><thead><tr><th>Stock</th><th>First listed</th><th class="r">Listed at</th><th class="r">Close now</th><th class="r">Now</th><th class="r">Best reached</th><th class="r">Worst dip</th><th>+${t}% hit</th><th class="r">Days</th><th>Still listed?</th></tr></thead><tbody>
   ${rows.map(r=>`<tr><td><strong>${esc(r.symbol)}</strong> ${tvLink(r.symbol)}</td><td>${esc(r.first_listed)}${r.rank?` <span class="soft">#${r.rank}</span>`:""}</td><td class="r">${r.listed_close!=null?Number(r.listed_close).toFixed(2):"–"}</td><td class="r">${r.close!=null?Number(r.close).toFixed(2):"–"}</td><td class="r">${r.sessions?pc2(r.now_pct):"–"}</td><td class="r">${r.sessions?pc2(r.best_pct):"–"}</td><td class="r">${r.sessions?pc2(r.worst_pct):"–"}</td><td>${r.hit_date?`<span class="pos">✓ ${esc(r.hit_date)}</span>`:r.sessions?'<span class="amb">holding</span>':'<span class="soft">just listed</span>'}</td><td class="r">${r.days_to_hit??(r.sessions?r.sessions+" so far":"–")}</td><td>${r.status==="listed"?"Yes":r.status==="dropped"?`No (last ${esc(r.last_listed)})`:"No price"}</td></tr>`).join("")}
   </tbody></table></div><p class="soft" style="margin:8px 0 0">"Days" counts trading days from listing to the first day the high reached +${t}%. Best and worst use the daily highs and lows after listing. This ignores charges and the 3-part buying, so it shows how good the picks were, not your exact profit.</p></section>`;}
+let SORT20={k:"rank",dir:1};
+const FOLD=(()=>{try{return new Set(JSON.parse(localStorage.getItem("nse-fold")||"[]"));}catch(e){return new Set();}})();
+function saveFold(){try{localStorage.setItem("nse-fold",JSON.stringify([...FOLD]));}catch(e){}}
+function makeFoldable(root){let n=0;
+  const secs=[...root.children].filter(el=>el.matches("section.card")&&!el.classList.contains("filters"));
+  for(const el of secs){const head=el.firstElementChild,h2=el.querySelector("h2");if(!head||!h2||!head.contains(h2)||!head.nextElementSibling)continue;
+    const title=h2.textContent.replace(/^\s*\d+\.\s*/,"").trim(),key=title.slice(0,60),id="fold-"+(++n),closed=FOLD.has(key);
+    const body=document.createElement("div");body.id=id;while(head.nextSibling)body.appendChild(head.nextSibling);el.appendChild(body);body.hidden=closed;
+    const b=document.createElement("button");b.type="button";b.className="foldbtn";b.dataset.fold=key;b.setAttribute("aria-controls",id);b.setAttribute("aria-expanded",String(!closed));
+    b.setAttribute("aria-label",(closed?"Show ":"Hide ")+title);b.textContent=closed?"▸":"▾";
+    if(head===h2){h2.style.display="flex";h2.style.alignItems="center";h2.prepend(b);}else{const row=h2.closest(".row")||head;row.prepend(b);}}
+  if(n){const bar=document.createElement("div");bar.className="foldbar";bar.innerHTML='<button type="button" data-foldall="open">Expand all</button><button type="button" data-foldall="close">Collapse all</button>';
+    const first=secs.find(s=>s.querySelector(".foldbtn"));if(first)first.before(bar);}}
+function setFold(b,open){const body=document.getElementById(b.getAttribute("aria-controls"));if(!body)return;body.hidden=!open;b.setAttribute("aria-expanded",String(open));b.textContent=open?"▾":"▸";
+  b.setAttribute("aria-label",(open?"Hide ":"Show ")+b.getAttribute("aria-label").replace(/^(Show|Hide) /,""));open?FOLD.delete(b.dataset.fold):FOLD.add(b.dataset.fold);}
+function candleSvg(r){const c=r.candles;if(!c||c.length<3)return"";
+  const W=360,H=130,L=6,R=48,T=8,Bm=18,n=c.length,z=r.entry_zone||[];
+  let lo=Math.min(...c.map(x=>x[3])),hi=Math.max(...c.map(x=>x[2]));
+  if(z[0]&&z[0]>lo*0.97)lo=Math.min(lo,z[0]);if(r.target&&r.target<hi*1.03)hi=Math.max(hi,r.target);
+  const pad=(hi-lo)*0.06||1;lo-=pad;hi+=pad;
+  const y=v=>T+(hi-v)/(hi-lo)*(H-T-Bm),step=(W-L-R)/n,cw=Math.max(3,step*0.6),x=i=>L+step*i+step/2;
+  const band=`<rect x="${L+step*(n-3)}" y="${T}" width="${step*3}" height="${H-T-Bm}" fill="rgba(96,165,250,.12)"/><text x="${L+step*(n-1.5)}" y="${T+10}" text-anchor="middle" font-size="10" fill="#9aa4b2">last 3 days</text>`;
+  const zoneR=z[0]&&z[1]?`<rect x="${L}" y="${y(z[1])}" width="${W-L-R}" height="${Math.max(1,y(z[0])-y(z[1]))}" fill="rgba(52,211,153,.13)"/><text x="${W-R+3}" y="${y((z[0]+z[1])/2)+3}" font-size="10" fill="#34d399">buy zone</text>`:"";
+  const tgt=r.target&&r.target<=hi?`<line x1="${L}" x2="${W-R}" y1="${y(r.target)}" y2="${y(r.target)}" stroke="#fbbf24" stroke-dasharray="4 3"/><text x="${W-R+3}" y="${y(r.target)+3}" font-size="10" fill="#fbbf24">+${cur().target_pct||3}%</text>`:"";
+  const bars=c.map((k,i)=>{const[,o,h,l,cl]=k,up=cl>=o,col=up?"#34d399":"#fb7185",top=y(Math.max(o,cl)),ht=Math.max(1,Math.abs(y(o)-y(cl)));
+    return `<line x1="${x(i)}" x2="${x(i)}" y1="${y(h)}" y2="${y(l)}" stroke="${col}"/><rect x="${x(i)-cw/2}" y="${top}" width="${cw}" height="${ht}" fill="${col}"/>`;}).join("");
+  const last=c.slice(-3),prev=c[n-4]?c[n-4][4]:last[0][1];
+  const desc=last.map((k,i)=>{const p=i?last[i-1][4]:prev,ch=(100*(k[4]/p-1));return `${k[0].slice(5)} close ${k[4].toFixed(2)} (${ch>=0?"+":""}${ch.toFixed(1)}%)`;}).join(", ");
+  const lab=`Daily candles for ${r.symbol}, ${c[0][0]} to ${c[n-1][0]}. Last 3 days: ${desc}.`;
+  return `<figure class="chart"><svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(lab)}">${band}${zoneR}${tgt}${bars}<text x="${L}" y="${H-5}" font-size="10" fill="#9aa4b2">${c[0][0].slice(5)}</text><text x="${W-R}" y="${H-5}" font-size="10" text-anchor="end" fill="#9aa4b2">${c[n-1][0].slice(5)}</text></svg>
+   <figcaption>Last ${n} trading days (daily candles; green = closed up, red = down). Last 3 days: ${esc(desc)}. Full chart: ${tvLink(r.symbol)}</figcaption></figure>`;}
 function levelsBlock(r){if(r.ema50==null&&r.ath==null)return `<p class="soft" style="margin:6px 0 0;font-size:14px">EMA, all-time high and low appear from the next scan.</p>`;
   const px=(cmpOf(r.symbol)||{}).p||r.close, rel=v=>v?`<span class="${px>=v?"pos":"neg"}">${px>=v?"above":"below"}</span>`:"";
   const pct=(a,b)=>((a/b-1)*100).toFixed(1), hl=(h,l)=>h!=null&&l!=null?`${h.toFixed(2)} / ${l.toFixed(2)} <span class="soft">· ${pct(px,h)}% from high</span>`:"next scan";
@@ -582,6 +618,7 @@ function stockCard(r,t,opt){const rd=READ[r.colour]||READ.GREY, inv=opt&&opt.own
    ${inv?`<p class="note ${inv.hard?"bad":""}" style="margin:0 0 8px">${esc(inv.why)}</p>`:""}
    ${(r.quality_issues||[]).length?`<p class="note" style="margin:0 0 8px"><strong>Misses the quality bar:</strong> ${esc(r.quality_issues.join("; "))}. Scores ${r.score.toFixed(0)}, but the company is smaller, more indebted or less profitable than the rules prefer. Size it smaller or skip.</p>`:""}
    ${cmpLine(r)}
+   ${candleSvg(r)}
    <p style="margin:0 0 8px"><strong>${esc(zone)}</strong></p>
    <div class="lot" style="border-top:0;padding:0"><dl>
    <div><dt>Close${r.as_of?" ("+esc(shortDay(r.as_of))+")":""}</dt><dd>${r.close.toFixed(2)}</dd></div><div><dt>+${t}% level</dt><dd>${r.target.toFixed(2)}</dd></div>
@@ -685,11 +722,16 @@ async function runAnalyze(q){q=(q||"").trim();if(!q||ANA.busy)return;ANA.busy=q;
   render();const el=$("#anaQ");if(el&&!r.ok)el.focus();}
 const VIEWS={
 best20(){
-  const d=cur(),t=d.target_pct,list=d.top.slice(0,20);
-  let h=`<section><h2>Top 20 by score</h2><p class="soft" style="margin:0">Close of ${esc(d.as_of)} · Nifty: ${esc(d.regime)} · only stocks that pass the quality bar, ranked by score. The full list of every ${d.min_score||80}+ stock is on the "All 80+ stocks" tab.</p></section>`;
+  const d=cur(),t=d.target_pct,top=d.top.slice(0,20),ZO={GREEN:0,YELLOW:1,GREY:2,RED:3};
+  const val={rank:r=>r.rank??99,symbol:r=>r.symbol,score:r=>r.score,zone:r=>ZO[r.colour]??2,close:r=>r.close};
+  const f0=val[SORT20.k]||val.rank,list=top.slice().sort((a,b)=>{const x=f0(a),y=f0(b);return (x<y?-1:x>y?1:0)*SORT20.dir||(b.score-a.score);});
+  const th=(k,l,cls)=>{const on=SORT20.k===k,dirW=SORT20.dir>0?"ascending":"descending";
+    return `<th class="${cls||""}" ${on?`aria-sort="${dirW}"`:""}><button type="button" class="sortbtn" data-sort20="${k}">${l} <span aria-hidden="true">${on?(SORT20.dir>0?"▲":"▼"):"⇅"}</span><span class="sr">${on?"":", sort"}</span></button></th>`;};
+  let h=`<section><h2>Top 20 by score</h2><p class="soft" style="margin:0">Close of ${esc(d.as_of)} · Nifty: ${esc(d.regime)} · only stocks that pass the quality bar. Tap a column title (#, Stock, Score, Buy zone, Close) to sort; tap again to reverse. Every ${d.min_score||80}+ stock is on the "All 80+ stocks" tab.</p></section>`;
   if(d.regime==="bearish") h+=`<p class="note bad"><strong>NO TRADE.</strong> The Nifty is in a downtrend by this tool's rules. The list is for reference only.</p>`;
-  h+=`<section class="card"><div class="scroll"><table><thead><tr><th>#</th><th>Stock</th><th class="r">Score</th><th>Buy zone</th><th class="r">Close</th><th class="r">Week H / L</th><th class="r">Month H / L</th><th class="r">Year H / L</th></tr></thead><tbody>
-  ${list.map((r,i)=>{const f=(a,b)=>a!=null&&b!=null?`${a.toFixed(1)} / ${b.toFixed(1)}`:"–";return `<tr><td>${i+1}</td><td><strong>${esc(r.symbol)}</strong> ${tvLink(r.symbol)}</td><td class="r">${r.score.toFixed(0)}</td><td>${esc((READ[r.colour]||READ.GREY)[1])}</td><td class="r">${Number(r.close).toFixed(2)}</td><td class="r">${f(r.week_high,r.week_low)}</td><td class="r">${f(r.month_high,r.month_low)}</td><td class="r">${f(r.high52,r.low52)}</td></tr>`;}).join("")}
+  const f=(a,b)=>a!=null&&b!=null?`${a.toFixed(1)} / ${b.toFixed(1)}`:"–";
+  h+=`<section class="card"><h2>Top 20 table</h2><div class="scroll"><table><thead><tr>${th("rank","#")}${th("symbol","Stock")}${th("score","Score","r")}${th("zone","Buy zone")}${th("close","Close","r")}<th class="r">Week H / L</th><th class="r">Month H / L</th><th class="r">Year H / L</th></tr></thead><tbody>
+  ${list.map(r=>`<tr><td>${r.rank??""}</td><td><strong>${esc(r.symbol)}</strong> ${tvLink(r.symbol)}</td><td class="r">${r.score.toFixed(0)}</td><td>${esc((READ[r.colour]||READ.GREY)[1])}</td><td class="r">${Number(r.close).toFixed(2)}</td><td class="r">${f(r.week_high,r.week_low)}</td><td class="r">${f(r.month_high,r.month_low)}</td><td class="r">${f(r.high52,r.low52)}</td></tr>`).join("")}
   </tbody></table></div><div class="row" style="gap:6px;margin-top:8px"><button type="button" data-dl="csv20">⬇ Download top 20 (Excel CSV)</button></div></section>`;
   return h+list.map(r=>stockCard(r,t)).join("");
 },
@@ -1040,6 +1082,9 @@ main.addEventListener("submit",e=>{
 });
 main.addEventListener("click",async e=>{
   const t=e.target;
+  const fo=t.closest&&t.closest("[data-fold]");if(fo){setFold(fo,fo.getAttribute("aria-expanded")!=="true");saveFold();return;}
+  const fa=t.closest&&t.closest("[data-foldall]");if(fa){const open=fa.dataset.foldall==="open";main.querySelectorAll(".foldbtn").forEach(b=>setFold(b,open));saveFold();return;}
+  const so=t.closest&&t.closest("[data-sort20]");if(so){const k=so.dataset.sort20;SORT20.dir=SORT20.k===k?-SORT20.dir:(k==="score"?-1:1);SORT20.k=k;render();const again=document.querySelector(`[data-sort20="${k}"]`);if(again)again.focus();return;}
   const fb=t.closest&&t.closest("[data-flt]");
   if(fb){const g=fb.dataset.flt;if(g==="clear"){FLT.zone=[];FLT.score=[];}else{const a=FLT[g],k=fb.dataset.val,i=a.indexOf(k);i<0?a.push(k):a.splice(i,1);}
     saveFlt();render();const again=g==="clear"?null:document.querySelector(`[data-flt="${g}"][data-val="${fb.dataset.val}"]`);if(again)again.focus();return;}
