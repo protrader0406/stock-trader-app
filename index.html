@@ -344,7 +344,7 @@ function applyScan(){
   }
   if(changed) persist();
 }
-const PAGES=[["top20","All 80+ stocks"],["best20","Top 20"],["analyze","Analyze other stocks"],["book","Positions"],["perf","Performance"],["invalid","Became invalid"],["buy","Add buy"],["calc","Calculator"],["ledger","History"],["setup","Setup"],["faq","FAQ"]];
+const PAGES=[["top20","All 80+ stocks"],["best20","Top 20"],["analyze","Analyze other stocks"],["book","Positions"],["perf","Performance"],["invalid","Became invalid"],["buy","Add buy"],["ledger","History"],["setup","Setup"],["faq","FAQ"]];
 const KEY="tranche-book-v1";
 let B=newBook(), cloudRef=null, writing=false, dirty=false, flash=null, scanNote="";
 const REASSESS=["I re-read the latest results and announcements: fundamentals are still healthy.",
@@ -549,6 +549,18 @@ function cmpLine(r){const q=cmpOf(r.symbol);if(!q)return `<p class="soft" style=
   return `<div class="cmp"><span class="cmpL">CMP</span> <strong class="num">₹${q.p.toFixed(2)}</strong>${ch!=null?` <span class="${ch>0?"pos":ch<0?"neg":""}">${ch>0?"+":""}${ch.toFixed(2)}% today</span>`:""}
    <span class="soft">· ${esc(tm)}</span> ${where}${hit}</div>`;}
 function t3(){return (cur().target_pct||3);}
+function picksSection(){
+  const d=cur(),P=d.picks_record,t=d.target_pct||3;
+  const pc2=v=>v==null?"–":`<span class="${v>0?"pos":v<0?"neg":""}">${v>0?"+":""}${Number(v).toFixed(2)}%</span>`;
+  if(!P||!(P.rows||[]).length) return `<section class="card"><h2>How this app's picks actually did</h2><p>This fills in from the next scan. Every stock the app has listed is followed from the close of the day it was first listed.</p></section>`;
+  const rows=P.rows.slice().sort((a,b)=>(b.first_listed||"").localeCompare(a.first_listed||"")||(a.rank||99)-(b.rank||99));
+  const wait=P.picks-P.with_history;
+  return `<section><h2>How this app's picks actually did</h2><p class="soft" style="margin:0 0 8px">Real results, not a replay: every stock the app listed on ${P.scans} scan day${P.scans>1?"s":""} (${esc(P.from)} to ${esc(P.to)}), measured from the close of the day it was first listed, as if bought then.</p></section>
+  <div class="tiles">${tile("Stocks listed",P.picks)}${tile(`Reached +${t}%`,P.with_history?`${P.hit} of ${P.with_history} (${P.hit_pct}%)`:"–","g")}${tile("Not reached yet (holding)",P.with_history?P.with_history-P.hit:"–")}${tile(`Average days to +${t}%`,P.avg_days_to_hit!=null?P.avg_days_to_hit+" trading days":"–")}${tile("Average change now",pc2(P.avg_now_pct),P.avg_now_pct>0?"g":P.avg_now_pct<0?"r":"")}${tile("Up now",P.with_history?`${P.up_now} of ${P.with_history}`:"–")}</div>
+  ${wait?`<p class="soft">${wait} listed on the last scan day have no trading day after listing yet, so they are not counted above.</p>`:""}
+  <section class="card"><div class="scroll"><table><thead><tr><th>Stock</th><th>First listed</th><th class="r">Listed at</th><th class="r">Close now</th><th class="r">Now</th><th class="r">Best reached</th><th class="r">Worst dip</th><th>+${t}% hit</th><th class="r">Days</th><th>Still listed?</th></tr></thead><tbody>
+  ${rows.map(r=>`<tr><td><strong>${esc(r.symbol)}</strong> ${tvLink(r.symbol)}</td><td>${esc(r.first_listed)}${r.rank?` <span class="soft">#${r.rank}</span>`:""}</td><td class="r">${r.listed_close!=null?Number(r.listed_close).toFixed(2):"–"}</td><td class="r">${r.close!=null?Number(r.close).toFixed(2):"–"}</td><td class="r">${r.sessions?pc2(r.now_pct):"–"}</td><td class="r">${r.sessions?pc2(r.best_pct):"–"}</td><td class="r">${r.sessions?pc2(r.worst_pct):"–"}</td><td>${r.hit_date?`<span class="pos">✓ ${esc(r.hit_date)}</span>`:r.sessions?'<span class="amb">holding</span>':'<span class="soft">just listed</span>'}</td><td class="r">${r.days_to_hit??(r.sessions?r.sessions+" so far":"–")}</td><td>${r.status==="listed"?"Yes":r.status==="dropped"?`No (last ${esc(r.last_listed)})`:"No price"}</td></tr>`).join("")}
+  </tbody></table></div><p class="soft" style="margin:8px 0 0">"Days" counts trading days from listing to the first day the high reached +${t}%. Best and worst use the daily highs and lows after listing. This ignores charges and the 3-part buying, so it shows how good the picks were, not your exact profit.</p></section>`;}
 function levelsBlock(r){if(r.ema50==null&&r.ath==null)return `<p class="soft" style="margin:6px 0 0;font-size:14px">EMA, all-time high and low appear from the next scan.</p>`;
   const px=(cmpOf(r.symbol)||{}).p||r.close, rel=v=>v?`<span class="${px>=v?"pos":"neg"}">${px>=v?"above":"below"}</span>`:"";
   const pct=(a,b)=>((a/b-1)*100).toFixed(1), hl=(h,l)=>h!=null&&l!=null?`${h.toFixed(2)} / ${l.toFixed(2)} <span class="soft">· ${pct(px,h)}% from high</span>`:"next scan";
@@ -810,7 +822,7 @@ top20(){
   return h;
 },
 perf(){
-  const bt=btSection()+cmpSection();
+  const bt=picksSection()+btSection()+cmpSection();
   const d=cur(),days=Object.keys(d.perf_days||{}).sort().reverse(),weeks=Object.keys(d.perf_weeks||{}).sort().reverse();
   if(!days.length) return bt+`<section class="card"><h2>Performance</h2><p>Daily and weekly tables start with the next scan (weekdays at 6 PM). From then on every listed stock is followed until it becomes invalid.</p></section>`;
   const view=PERF.view, near=PERF.near;
@@ -914,15 +926,6 @@ buy(){
     <p class="soft" style="margin:0">A lower price alone is never a reason to buy more. Tick each line only if it is true.</p>
     <div class="checks">${REASSESS.map((t,i)=>`<label for="ra${i}"><input type="checkbox" id="ra${i}" data-ra> <span>${esc(t)}</span></label>`).join("")}</div></fieldset>
    <button class="primary" id="buyBtn" disabled>Record buy</button></form></section>`;
-},
-calc(){
-  const s=B.settings;
-  return `<section class="card"><h2>Profit target calculator</h2><form id="calcF" class="row">
-   <label for="cp">Purchase price<input id="cp" name="p" type="number" inputmode="decimal" step="0.05" min="0.05" required></label>
-   <label for="ca">Amount (₹)<input id="ca" name="a" type="number" inputmode="decimal" value="${newPart(B)||30000}" required></label>
-   <label for="ct">Target<select id="ct" name="t">${[1,2,3,4,5].map(x=>`<option value="${x}" ${x==s.targetPct?"selected":""}>${x}%</option>`).join("")}</select></label>
-   <button class="primary" style="flex:none">Calculate</button></form>
-   <div id="calcOut" role="status" aria-live="polite" style="margin-top:12px"><p class="soft">A 3% rise in price is not a 3% net profit. This shows what is left after every charge.</p></div></section>`;
 },
 ledger(){
   const closed=B.lots.filter(l=>l.status==="CLOSED").slice().reverse();
