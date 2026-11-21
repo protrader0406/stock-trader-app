@@ -49,9 +49,11 @@ nav a[aria-current="page"]{color:var(--accent-ink);background:linear-gradient(90
 .tile .v{font:500 19px/1.3 var(--mono);font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
 .num{font-family:var(--mono);font-variant-numeric:tabular-nums}
 .big{font:600 26px/1.1 var(--mono);font-variant-numeric:tabular-nums}
+.chiplink{color:inherit;text-decoration:none;cursor:pointer}.chiplink:hover,.chiplink:focus-visible{border-color:var(--blue);outline:none;box-shadow:0 0 0 2px var(--blue)}
 .foldbtn{flex:none;min-width:34px;min-height:34px;padding:0 8px;margin-right:6px;font-size:16px;line-height:1;border-radius:8px}
 .foldbar{display:flex;gap:6px;flex-wrap:wrap;margin:0 0 10px}
 .sortbtn{all:unset;cursor:pointer;font:inherit;font-weight:600;white-space:nowrap}.sortbtn:focus-visible{outline:2px solid var(--blue);outline-offset:2px;border-radius:4px}
+.rangesel{width:100%;margin:0 0 4px;font-size:14px;padding:6px 8px}.pats{margin:4px 0 0;padding:0;list-style:none;font-size:13px;line-height:1.45}
 .charts{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:10px;margin:8px 0 4px}.chart{margin:0}.chart svg{width:100%;height:auto;display:block;background:rgba(255,255,255,.02);border-radius:8px}.chart figcaption{font-size:13px;color:var(--soft);margin-top:2px}
 .pos{color:var(--good)}.neg{color:var(--bad)}.soft{color:var(--soft)}.amb{color:var(--warn)}
 .note{border-left:4px solid var(--warn);background:var(--warn-bg);padding:10px 12px;border-radius:8px;margin:0}
@@ -320,7 +322,7 @@ function tape(){
   const items=[];const nq=QUOTES&&QUOTES.prices&&QUOTES.prices.NIFTY50;
   if(nq) items.push(`<div class="chip"><b>NIFTY 50</b><span class="num">${nq[0].toLocaleString("en-IN")}</span>${pc(nq[1]?100*(nq[0]/nq[1]-1):null)}</div>`);
   for(const sym of held(B)){const ls=lotsOf(B,sym),p=priceOf(B,ls[0]),u=r2(ls.reduce((a,l)=>a+(p-l.buyPrice)*l.qty,0));
-    items.push(`<div class="chip"><b>${esc(sym)}</b><span class="num">${p.toFixed(2)} ${pc(dayChg(sym))}</span><span class="num ${u>=0?"pos":"neg"}">${u>=0?"+":"−"}₹${Math.abs(u).toLocaleString("en-IN")}</span></div>`);}
+    items.push(`<a class="chip chiplink" href="#book" data-pos="${esc(sym)}" title="Open ${esc(sym)} in Positions"><b>${esc(sym)} ${invalidity(sym)&&invalidity(sym).hard?'<span class="neg" style="font-size:11px">invalid</span>':""}</b><span class="num">${p.toFixed(2)} ${pc(dayChg(sym))}</span><span class="num ${u>=0?"pos":"neg"}">${u>=0?"+":"−"}₹${Math.abs(u).toLocaleString("en-IN")}</span></a>`);}
   const when=QUOTES&&QUOTES.ts?`<div class="chip"><b>Prices</b><span class="soft" style="font-size:13px">${esc(QUOTES.ts.replace("T"," ").slice(0,16))}</span><span class="soft" style="font-size:12px">delayed, Yahoo</span></div>`:"";
   return items.length?items.join("")+when:"";}
 /* Why a stock is no longer valid, from the latest scan. null = nothing wrong found. */
@@ -329,7 +331,8 @@ function invalidity(sym){
   const ch=(d.changes&&d.changes.invalid||[]).find(x=>x.symbol===sym);
   if(sn&&sn.v&&sn.v.length) return{hard:true,why:"Fundamental red flag: "+sn.v.join("; ")};
   if(sn&&sn.x&&sn.x.length) return{hard:true,why:"Failed screening: "+sn.x.join("; ")};
-  const gone=(d.invalid_list||[]).find(x=>x.symbol===sym&&x.removed===d.as_of);
+  const back=(d.tracked||[]).some(x=>x.symbol===sym)||(d.top||[]).some(x=>x.symbol===sym);
+  const gone=back?null:(d.invalid_list||[]).find(x=>x.symbol===sym&&x.removed===d.as_of);
   if(gone) return{hard:true,why:gone.reason};
   if(ch) return{hard:true,why:ch.reason};
   if(sn&&sn.s==="trending_down") return{hard:true,why:"Price structure is trending down"};
@@ -348,7 +351,7 @@ function applyScan(){
   }
   if(changed) persist();
 }
-const PAGES=[["top20","All 80+ stocks"],["best20","Top 20"],["analyze","Analyze other stocks"],["book","Positions"],["perf","Performance"],["invalid","Became invalid"],["buy","Add buy"],["ledger","History"],["setup","Setup"],["faq","FAQ"]];
+const PAGES=[["top20","All 80+ stocks"],["best20","Top 20"],["sectors","Sector wise"],["analyze","Analyze other stocks"],["book","Positions"],["perf","Performance"],["invalid","Became invalid"],["buy","Add buy"],["ledger","History"],["setup","Setup"],["faq","FAQ"]];
 const KEY="tranche-book-v1";
 let B=newBook(), cloudRef=null, writing=false, dirty=false, flash=null, scanNote="";
 const REASSESS=["I re-read the latest results and announcements: fundamentals are still healthy.",
@@ -402,7 +405,7 @@ async function saveGHBook(){
   ghWriting=false;}
 async function pollPhone(){if(!GH)return;let changed=false;
   try{const sc=await ghRaw("app_payload.json");if(sc&&sc.as_of&&sc.top&&(!LIVE||sc.generated_at!==LIVE.generated_at)){LIVE=sc;applyScan();changed=true;}
-    const chs=await ghRaw("charts.json").catch(()=>null);if(chs&&chs.ts&&(!CHARTS||chs.ts!==CHARTS.ts)){CHARTS=chs;changed=true;}
+    if(!window._chT||Date.now()-window._chT>600000){window._chT=Date.now();const chs=await ghRaw("charts.json").catch(()=>null);if(chs&&chs.ts&&(!CHARTS||chs.ts!==CHARTS.ts)){CHARTS=chs;changed=true;}}
     const q=await ghRaw("quotes.json");if(q&&q.prices&&(!QUOTES||q.ts!==QUOTES.ts)){QUOTES=q;applyQuotes();changed=true;}
     const bt=await ghRaw("backtest_month.json").catch(()=>null);if(bt&&(!BT.res||bt.generated_at!==BT.res.generated_at)){BT.res=bt;BT.loaded=true;changed=true;}
     const by=await ghRaw("backtest_year.json").catch(()=>null);if(by&&(!BT.year||by.generated_at!==BT.year.generated_at)){BT.year=by;changed=true;}
@@ -522,7 +525,7 @@ function render(){
   $("#nav").innerHTML=PAGES.map(([id,t])=>`<a href="#${id}" ${id===p?'aria-current="page"':""}>${t}</a>`).join("");
   $("#tape").innerHTML=tape();
   main.innerHTML=(flash?`<p class="note ${flash.cls}" role="status">${esc(flash.msg)}</p>`:"")+VIEWS[p]();
-  if(p==="top20"||p==="best20") makeFoldable(main);
+  if(p==="top20"||p==="best20"||p==="sectors") makeFoldable(main);
   flash=null;if(p==="setup"){fillWa();fillCloud();}
 }
 const tile=(k,v,c)=>`<div class="tile ${c||""}"><div class="k">${esc(k)}</div><div class="v">${v}</div></div>`;
@@ -584,28 +587,70 @@ function makeFoldable(root){let n=0;
 function setFold(b,open){const body=document.getElementById(b.getAttribute("aria-controls"));if(!body)return;body.hidden=!open;b.setAttribute("aria-expanded",String(open));b.textContent=open?"▾":"▸";
   b.setAttribute("aria-label",(open?"Hide ":"Show ")+b.getAttribute("aria-label").replace(/^(Show|Hide) /,""));open?FOLD.delete(b.dataset.fold):FOLD.add(b.dataset.fold);}
 var CHARTS=null;
-function candleFig(r,c,title,o){if(!c||c.length<3)return `<figure class="chart"><figcaption><strong>${title}</strong>: appears after the next price update.</figcaption></figure>`;
-  const W=360,H=130,L=6,R=48,T=8,Bm=18,n=c.length,z=r.entry_zone||[];
+const RANGES=[["m15_1","15-min · 1 day","m15",1],["m15_3","15-min · 3 days","m15",3],["m15_5","15-min · 5 days","m15",5],
+ ["h1_5","1-hour · 1 week","h1",5],["h1_22","1-hour · 1 month","h1",22],
+ ["d1_15","1-day · 15 days","d1",15],["d1_22","1-day · 1 month","d1",22],["d1_66","1-day · 3 months","d1",66],["d1_126","1-day · 6 months","d1",126],["d1_250","1-day · 1 year","d1",250],
+ ["w1_20","Weekly · 20 weeks","w1",20],["w1_52","Weekly · 1 year","w1",52],["w1_156","Weekly · 3 years","w1",156]];
+const SLOT_DEF=["d1_15","m15_3","w1_20"],CHSEL={};
+function seriesFor(r,key){const R=RANGES.find(x=>x[0]===key)||RANGES[5],C=CHARTS||{};let c=(C[R[2]]||{})[r.symbol];
+  if(R[2]==="d1"&&(!c||!c.length))c=r.candles;if(!c||!c.length)return{c:null,R};
+  if(R[2]==="m15"||R[2]==="h1"){const days=[...new Set(c.map(k=>k[0].slice(0,5)))].slice(-R[3]);c=c.filter(k=>days.includes(k[0].slice(0,5)));}else c=c.slice(-R[3]);
+  return{c,R};}
+/* Simple, rule-based pattern checks on the candles shown. Not a forecast. */
+function patterns(c,unit){if(!c||c.length<5)return[];const out=[],n=c.length,O=i=>c[i][1],H=i=>c[i][2],Lo=i=>c[i][3],C=i=>c[i][4];
+  const body=i=>Math.abs(C(i)-O(i)),rng=i=>Math.max(1e-9,H(i)-Lo(i)),up=i=>C(i)>=O(i),l=n-1,u=unit||"day";
+  const avgR=(a,b)=>{let t=0,k=0;for(let i=Math.max(0,a);i<b;i++){t+=rng(i);k++;}return k?t/k:0;};
+  // trend: compare highs and lows of the two halves of the last 20 bars
+  const w=Math.min(20,n),h1=c.slice(n-w,n-Math.floor(w/2)),h2=c.slice(n-Math.floor(w/2));
+  const mx=a=>Math.max(...a.map(k=>k[2])),mn=a=>Math.min(...a.map(k=>k[3]));
+  if(mx(h2)>mx(h1)&&mn(h2)>mn(h1))out.push({name:"Uptrend: higher highs and higher lows",tone:"bull"});
+  else if(mx(h2)<mx(h1)&&mn(h2)<mn(h1))out.push({name:"Downtrend: lower highs and lower lows",tone:"bear"});
+  else out.push({name:"Sideways: no clear trend",tone:"neutral"});
+  const prevHi=Math.max(...c.slice(Math.max(0,n-21),l).map(k=>k[2])),prevLo=Math.min(...c.slice(Math.max(0,n-21),l).map(k=>k[3]));
+  if(n>=10&&C(l)>prevHi)out.push({name:`Breakout: closed above the high of the previous ${Math.min(20,l)} ${u}s`,tone:"bull"});
+  if(n>=10&&C(l)<prevLo)out.push({name:`Breakdown: closed below the low of the previous ${Math.min(20,l)} ${u}s`,tone:"bear"});
+  if(n>=12&&avgR(n-5,n)<0.6*avgR(n-25,n-5))out.push({name:"Tightening range: moves are getting smaller (often comes before a big move)",tone:"neutral"});
+  if(body(l)<=0.1*rng(l))out.push({name:`Doji on the last ${u}: buyers and sellers balanced`,tone:"neutral"});
+  const lw=i=>Math.min(O(i),C(i))-Lo(i),uw=i=>H(i)-Math.max(O(i),C(i)),fell=C(l-1)<C(Math.max(0,l-5)),rose=C(l-1)>C(Math.max(0,l-5));
+  if(body(l)>0.1*rng(l)&&lw(l)>=2*body(l)&&uw(l)<=body(l)&&fell)out.push({name:`Hammer after a fall on the last ${u}: buyers stepped in`,tone:"bull"});
+  if(body(l)>0.1*rng(l)&&uw(l)>=2*body(l)&&lw(l)<=body(l)&&rose)out.push({name:`Shooting star after a rise on the last ${u}: sellers stepped in`,tone:"bear"});
+  if(!up(l-1)&&up(l)&&O(l)<=C(l-1)&&C(l)>=O(l-1)&&body(l)>body(l-1))out.push({name:`Bullish engulfing on the last ${u}`,tone:"bull"});
+  if(up(l-1)&&!up(l)&&O(l)>=C(l-1)&&C(l)<=O(l-1)&&body(l)>body(l-1))out.push({name:`Bearish engulfing on the last ${u}`,tone:"bear"});
+  if(H(l)<H(l-1)&&Lo(l)>Lo(l-1))out.push({name:`Inside ${u}: range inside the previous ${u}, a pause`,tone:"neutral"});
+  if(n>=4&&[l-2,l-1,l].every(i=>up(i)&&C(i)>C(i-1)&&body(i)>0.5*rng(i)))out.push({name:`Three strong up ${u}s in a row`,tone:"bull"});
+  if(n>=4&&[l-2,l-1,l].every(i=>!up(i)&&C(i)<C(i-1)&&body(i)>0.5*rng(i)))out.push({name:`Three strong down ${u}s in a row`,tone:"bear"});
+  if(n>=15){const lows=[],highs=[];for(let i=2;i<n-2;i++){if(Lo(i)<=Math.min(Lo(i-1),Lo(i-2),Lo(i+1),Lo(i+2)))lows.push(i);if(H(i)>=Math.max(H(i-1),H(i-2),H(i+1),H(i+2)))highs.push(i);}
+    const a=lows.slice(-2),b=highs.slice(-2);
+    if(a.length===2&&a[1]-a[0]>=4&&Math.abs(Lo(a[1])/Lo(a[0])-1)<0.015){const pk=Math.max(...c.slice(a[0],a[1]+1).map(k=>k[2]));if(pk>Lo(a[0])*1.03&&C(l)>Lo(a[1]))out.push({name:"Possible double bottom: two similar lows, a base forming",tone:"bull"});}
+    if(b.length===2&&b[1]-b[0]>=4&&Math.abs(H(b[1])/H(b[0])-1)<0.015){const tr=Math.min(...c.slice(b[0],b[1]+1).map(k=>k[3]));if(tr<H(b[0])*0.97&&C(l)<H(b[1]))out.push({name:"Possible double top: two similar highs, a ceiling",tone:"bear"});}}
+  return out.sort((x,y)=>(x.tone==="neutral")-(y.tone==="neutral"));}
+function candleFig(r,slot){const key=CHSEL[r.symbol+"|"+slot]||SLOT_DEF[slot],{c,R}=seriesFor(r,key),unit=R[2]==="m15"?"15-min bar":R[2]==="h1"?"hour":R[2]==="w1"?"week":"day";
+  const sel=`<label class="sr" for="rg-${esc(r.symbol)}-${slot}">Time range for chart ${slot+1} of ${esc(r.symbol)}</label><select id="rg-${esc(r.symbol)}-${slot}" class="rangesel" data-range="${esc(r.symbol)}" data-slot="${slot}">${RANGES.map(x=>`<option value="${x[0]}" ${x[0]===key?"selected":""}>${x[1]}</option>`).join("")}</select>`;
+  if(!c||c.length<3)return `<figure class="chart" data-fig="${esc(r.symbol)}|${slot}">${sel}<figcaption>No ${esc(R[1])} data yet. It appears after the next price update on your laptop.</figcaption></figure>`;
+  const W=360,H=130,L=6,Rm=48,T=8,Bm=18,n=c.length,z=r.entry_zone||[];
   let lo=Math.min(...c.map(x=>x[3])),hi=Math.max(...c.map(x=>x[2]));
   if(z[0]&&z[0]>lo*0.97&&z[0]<hi*1.03)lo=Math.min(lo,z[0]);if(z[1]&&z[1]<hi*1.03&&z[1]>lo*0.97)hi=Math.max(hi,z[1]);if(r.target&&r.target<hi*1.03&&r.target>lo)hi=Math.max(hi,r.target);
   const pad=(hi-lo)*0.06||1;lo-=pad;hi+=pad;
-  const y=v=>T+(hi-v)/(hi-lo)*(H-T-Bm),step=(W-L-R)/n,cw=Math.max(1.5,step*0.6),x=i=>L+step*i+step/2,clamp=v=>Math.max(T,Math.min(H-Bm,v));
+  const y=v=>T+(hi-v)/(hi-lo)*(H-T-Bm),step=(W-L-Rm)/n,cw=Math.max(1,step*0.6),x=i=>L+step*i+step/2,clamp=v=>Math.max(T,Math.min(H-Bm,v));
   let deco="";
-  if(o.last3) deco+=`<rect x="${L+step*(n-3)}" y="${T}" width="${step*3}" height="${H-T-Bm}" fill="rgba(96,165,250,.12)"/><text x="${L+step*(n-1.5)}" y="${T+10}" text-anchor="middle" font-size="10" fill="#9aa4b2">last 3 days</text>`;
-  if(o.daySplit){let prev=null;c.forEach((k,i)=>{const d=k[0].slice(0,5);if(prev&&d!==prev)deco+=`<line x1="${L+step*i}" x2="${L+step*i}" y1="${T}" y2="${H-Bm}" stroke="#9aa4b2" stroke-opacity=".35" stroke-dasharray="2 3"/><text x="${L+step*i+3}" y="${T+10}" font-size="10" fill="#9aa4b2">${d}</text>`;prev=d;});}
-  if(z[0]&&z[1]&&z[1]>lo&&z[0]<hi) deco+=`<rect x="${L}" y="${clamp(y(z[1]))}" width="${W-L-R}" height="${Math.max(1,clamp(y(z[0]))-clamp(y(z[1])))}" fill="rgba(52,211,153,.13)"/><text x="${W-R+3}" y="${clamp(y((z[0]+z[1])/2))+3}" font-size="10" fill="#34d399">buy zone</text>`;
-  if(r.target&&r.target<=hi&&r.target>=lo) deco+=`<line x1="${L}" x2="${W-R}" y1="${y(r.target)}" y2="${y(r.target)}" stroke="#fbbf24" stroke-dasharray="4 3"/><text x="${W-R+3}" y="${y(r.target)+3}" font-size="10" fill="#fbbf24">+${cur().target_pct||3}%</text>`;
+  if(R[2]==="d1"&&n<=30) deco+=`<rect x="${L+step*(n-3)}" y="${T}" width="${step*3}" height="${H-T-Bm}" fill="rgba(96,165,250,.12)"/><text x="${L+step*(n-1.5)}" y="${T+10}" text-anchor="middle" font-size="10" fill="#9aa4b2">last 3 days</text>`;
+  if(R[2]==="m15"||(R[2]==="h1"&&R[3]<=5)){let prev=null;c.forEach((k,i)=>{const d=k[0].slice(0,5);if(prev&&d!==prev)deco+=`<line x1="${L+step*i}" x2="${L+step*i}" y1="${T}" y2="${H-Bm}" stroke="#9aa4b2" stroke-opacity=".35" stroke-dasharray="2 3"/><text x="${L+step*i+3}" y="${T+10}" font-size="10" fill="#9aa4b2">${d}</text>`;prev=d;});}
+  if(z[0]&&z[1]&&z[1]>lo&&z[0]<hi) deco+=`<rect x="${L}" y="${clamp(y(z[1]))}" width="${W-L-Rm}" height="${Math.max(1,clamp(y(z[0]))-clamp(y(z[1])))}" fill="rgba(52,211,153,.13)"/><text x="${W-Rm+3}" y="${clamp(y((z[0]+z[1])/2))+3}" font-size="10" fill="#34d399">buy zone</text>`;
+  if(r.target&&r.target<=hi&&r.target>=lo) deco+=`<line x1="${L}" x2="${W-Rm}" y1="${y(r.target)}" y2="${y(r.target)}" stroke="#fbbf24" stroke-dasharray="4 3"/><text x="${W-Rm+3}" y="${y(r.target)+3}" font-size="10" fill="#fbbf24">+${cur().target_pct||3}%</text>`;
   const bars=c.map((k,i)=>{const[,op,h,l,cl]=k,up=cl>=op,col=up?"#34d399":"#fb7185",top=y(Math.max(op,cl)),ht=Math.max(1,Math.abs(y(op)-y(cl)));
     return `<line x1="${x(i)}" x2="${x(i)}" y1="${y(h)}" y2="${y(l)}" stroke="${col}"/><rect x="${x(i)-cw/2}" y="${top}" width="${cw}" height="${ht}" fill="${col}"/>`;}).join("");
   const f=v=>v.toFixed(2),ch=(a,b)=>{const p=100*(a/b-1);return (p>=0?"+":"")+p.toFixed(1)+"%";};
   const lastC=c[n-1][4],firstO=c[0][1],H2=Math.max(...c.map(k=>k[2])),L2=Math.min(...c.map(k=>k[3]));
   const desc=`from ${c[0][0]} to ${c[n-1][0]}: opened ${f(firstO)}, now ${f(lastC)} (${ch(lastC,firstO)}), high ${f(H2)}, low ${f(L2)}`;
-  return `<figure class="chart"><figcaption style="margin:0 0 2px"><strong>${title}</strong></figcaption><svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(title+" for "+r.symbol+", "+desc)}">${deco}${bars}<text x="${L}" y="${H-5}" font-size="10" fill="#9aa4b2">${esc(o.lab(c[0][0]))}</text><text x="${W-R}" y="${H-5}" font-size="10" text-anchor="end" fill="#9aa4b2">${esc(o.lab(c[n-1][0]))}</text></svg>
-   <figcaption>${esc(desc[0].toUpperCase()+desc.slice(1))}.</figcaption></figure>`;}
-function candleSvg(r){const C=CHARTS||{},m=(C.m15||{})[r.symbol],w=(C.w1||{})[r.symbol];
-  if(!(r.candles&&r.candles.length)&&!m&&!w)return"";
-  return `<div class="charts">${candleFig(r,r.candles,"1-day candles · last 15 days",{last3:true,lab:d=>d.slice(5)})}${candleFig(r,m,"15-min candles · last 3 days",{daySplit:true,lab:d=>d})}${candleFig(r,w,"Weekly candles · last 20 weeks",{lab:d=>d.slice(2)})}</div>
-   <p class="soft" style="margin:0 0 6px;font-size:13px">Green = closed up, red = closed down. Shaded green band = buy zone, dashed line = +${cur().target_pct||3}% target. ${C.ts?`15-min and weekly from ${esc(C.ts.replace("T"," ").slice(0,16))}. `:""}Full chart: ${tvLink(r.symbol)}</p>`;}
+  const lab=d=>R[2]==="m15"||R[2]==="h1"?d:d.slice(2);
+  const pts=patterns(c,unit);
+  return `<figure class="chart" data-fig="${esc(r.symbol)}|${slot}">${sel}<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(R[1]+" candles for "+r.symbol+", "+desc)}">${deco}${bars}<text x="${L}" y="${H-5}" font-size="10" fill="#9aa4b2">${esc(lab(c[0][0]))}</text><text x="${W-Rm}" y="${H-5}" font-size="10" text-anchor="end" fill="#9aa4b2">${esc(lab(c[n-1][0]))}</text></svg>
+   <figcaption>${esc(desc[0].toUpperCase()+desc.slice(1))}.</figcaption>
+   ${pts.length?`<ul class="pats" aria-label="Patterns spotted on this chart">${pts.map(p=>`<li class="${p.tone==="bull"?"pos":p.tone==="bear"?"neg":"soft"}">${p.tone==="bull"?"▲":p.tone==="bear"?"▼":"●"} ${esc(p.name)}</li>`).join("")}</ul>`:""}</figure>`;}
+function candleSvg(r){const C=CHARTS||{};
+  if(!(r.candles&&r.candles.length)&&!(C.m15||{})[r.symbol]&&!(C.d1||{})[r.symbol])return"";
+  return `<div class="charts">${[0,1,2].map(i=>candleFig(r,i)).join("")}</div>
+   <p class="soft" style="margin:0 0 6px;font-size:13px">Pick any time range in each box. Green = closed up, red = closed down. Shaded green band = buy zone, dashed line = +${cur().target_pct||3}% target. ▲ bullish, ▼ bearish, ● neutral: simple rule checks on the candles shown, not a forecast. ${C.ts?`Intraday data from ${esc(C.ts.replace("T"," ").slice(0,16))}. `:""}Full chart: ${tvLink(r.symbol)}</p>`;}
 function levelsBlock(r){if(r.ema50==null&&r.ath==null)return `<p class="soft" style="margin:6px 0 0;font-size:14px">EMA, all-time high and low appear from the next scan.</p>`;
   const px=(cmpOf(r.symbol)||{}).p||r.close, rel=v=>v?`<span class="${px>=v?"pos":"neg"}">${px>=v?"above":"below"}</span>`:"";
   const pct=(a,b)=>((a/b-1)*100).toFixed(1), hl=(h,l)=>h!=null&&l!=null?`${h.toFixed(2)} / ${l.toFixed(2)} <span class="soft">· ${pct(px,h)}% from high</span>`:"next scan";
@@ -624,7 +669,7 @@ function stockCard(r,t,opt){const rd=READ[r.colour]||READ.GREY, inv=opt&&opt.own
    return `<section class="card"><div class="row" style="align-items:center;justify-content:space-between;gap:6px">
    <div class="row" style="align-items:center;gap:10px"><span class="score" style="background:${r.score>=88?"var(--good)":r.score>=84?"var(--accent)":"var(--accent2)"}" aria-label="Score ${r.score.toFixed(0)} of 100">${r.score.toFixed(0)}</span><h2 style="margin:0">${typeof r.rank==="number"?r.rank+". ":""}${esc(r.symbol)}</h2>${tvLink(r.symbol)}</div><span class="pill ${inv&&inv.hard?"closed":rd[0]}">${inv&&inv.hard?"Invalid":rd[1]}</span></div>
    <p class="soft" style="margin:2px 0 8px">${esc(r.name||"")}${r.sector?" · "+esc(r.sector):""}${mine?" · <strong>you hold this</strong>":""}</p>
-   ${inv?`<p class="note ${inv.hard?"bad":""}" style="margin:0 0 8px">${esc(inv.why)}</p>`:""}
+   ${inv?`<p class="note ${inv.hard?"bad":""}" style="margin:0 0 8px">${esc(inv.why)} ${inv.hard?`<button type="button" data-askwhy="${esc(r.symbol)}" style="margin-left:6px">Ask Sto-Bot why · hold or exit?</button>`:""}</p>`:""}
    ${(r.quality_issues||[]).length?`<p class="note" style="margin:0 0 8px"><strong>Misses the quality bar:</strong> ${esc(r.quality_issues.join("; "))}. Scores ${r.score.toFixed(0)}, but the company is smaller, more indebted or less profitable than the rules prefer. Size it smaller or skip.</p>`:""}
    ${cmpLine(r)}
    ${candleSvg(r)}
@@ -730,6 +775,26 @@ async function runAnalyze(q){q=(q||"").trim();if(!q||ANA.busy)return;ANA.busy=q;
   ANA.busy="";if(r.ok){ANA.items=[r.item,...ANA.items.filter(x=>x.symbol!==r.item.symbol)];setTimeout(pollLocal,20000);}else ANA.err=r.error||"Could not analyse that stock.";
   render();const el=$("#anaQ");if(el&&!r.ok)el.focus();}
 const VIEWS={
+sectors(){
+  const d=cur(),t=d.target_pct,minS=d.min_score||80,all=d.top.concat(d.quality_misses||[]).filter(r=>r.score>=minS),S=d.sectors||[];
+  const groups={};for(const r of all){(groups[r.sector||"Other"]=groups[r.sector||"Other"]||[]).push(r);}
+  const moodOf=sec=>S.find(x=>x.sector===sec);
+  const pc2=v=>v==null?"–":`<span class="${v>0?"pos":v<0?"neg":""}">${v>0?"+":""}${Number(v).toFixed(2)}%</span>`;
+  const moodPill=m=>!m?'<span class="pill open">No data yet</span>':`<span class="pill ${/^Positive/.test(m.mood)?"hit":/^Negative/.test(m.mood)?"closed":/positive/.test(m.mood)?"hit":/negative/.test(m.mood)?"sub":"open"}">${esc(m.mood)}</span>`;
+  const names=Object.keys(groups).sort((a,b)=>((moodOf(b)||{}).points??-9)-((moodOf(a)||{}).points??-9)||groups[b].length-groups[a].length);
+  let h=`<section><h2>Sector wise: ${all.length} stocks scoring ${minS}+ in ${names.length} sectors</h2><p class="soft" style="margin:0">Close of ${esc(d.as_of)}. Each sector's mood uses <strong>all</strong> its Nifty 500 stocks, not just the ${minS}+ ones: how many trade above their 50-day average, the average change this week, and the tone of recent headlines for its ${minS}+ stocks. Two or more of the three pointing the same way = Positive or Negative; one = Leaning; none = Mixed.</p></section>`;
+  if(!S.length) h+=`<p class="note">Sector mood appears from the next scan. The grouping below already works.</p>`;
+  h+=`<section class="card"><h2>All sectors at a glance</h2><div class="scroll"><table><thead><tr><th>Sector</th><th>Mood</th><th class="r">${minS}+ stocks</th><th class="r">Above 50-day avg</th><th class="r">Today</th><th class="r">Week</th><th class="r">Month</th><th>News (${minS}+ stocks)</th></tr></thead><tbody>
+   ${(S.length?S:names.map(n=>({sector:n}))).map(m=>`<tr><td><strong>${esc(m.sector)}</strong></td><td>${moodPill(m.mood?m:null)}</td><td class="r">${(groups[m.sector]||[]).length}</td><td class="r">${m.above_ema50_pct!=null?m.above_ema50_pct+"% of "+m.stocks:"–"}</td><td class="r">${pc2(m.day_pct)}</td><td class="r">${pc2(m.week_pct)}</td><td class="r">${pc2(m.month_pct)}</td><td>${m.news&&m.news!=="none"?`${esc(m.news)} <span class="soft">(${m.news_pos} good, ${m.news_neg} bad)</span>`:'<span class="soft">no headlines</span>'}</td></tr>`).join("")}
+   </tbody></table></div></section>`;
+  for(const n of names){const m=moodOf(n),rs=groups[n].sort((a,b)=>b.score-a.score);
+    h+=`<section class="card"><h2>${esc(n)} · ${rs.length} stock${rs.length>1?"s":""}</h2>
+    <p style="margin:4px 0 8px">${moodPill(m)} ${m?`<span class="soft">${m.above_ema50_pct}% of ${m.stocks} sector stocks above their 50-day average · week ${pc2(m.week_pct)} · month ${pc2(m.month_pct)} · news ${esc(m.news)}</span>`:""}</p>
+    <div class="scroll"><table><thead><tr><th>Stock</th><th class="r">Score</th><th>Buy zone</th><th class="r">Close</th><th>Quality bar</th><th>Pattern</th></tr></thead><tbody>
+    ${rs.map(r=>{const pt=patterns(r.candles||[],"day")[0];return `<tr><td><strong>${esc(r.symbol)}</strong> ${tvLink(r.symbol)}${held(B).includes(r.symbol)?' <span class="amb">held</span>':""}</td><td class="r">${r.score.toFixed(0)}</td><td>${esc((READ[r.colour]||READ.GREY)[1])}</td><td class="r">${Number(r.close).toFixed(2)}</td><td>${(r.quality_issues||[]).length?'<span class="amb">Misses</span>':'<span class="pos">Passes</span>'}</td><td>${pt?`<span class="${pt.tone==="bull"?"pos":pt.tone==="bear"?"neg":"soft"}">${esc(pt.name)}</span>`:'<span class="soft">–</span>'}</td></tr>`;}).join("")}
+    </tbody></table></div></section>`;}
+  return h;
+},
 best20(){
   const d=cur(),t=d.target_pct,top=d.top.slice(0,20),ZO={GREEN:0,YELLOW:1,GREY:2,RED:3};
   const val={rank:r=>r.rank??99,symbol:r=>r.symbol,score:r=>r.score,zone:r=>ZO[r.colour]??2,close:r=>r.close};
@@ -935,12 +1000,12 @@ book(){
     const pts=[...ls.map(l=>({v:l.target,c:"t",t:`Lot ${l.lotNo} target (sell ${l.qty})`})),...ls.map(l=>({v:l.buyPrice,c:"b",t:`Lot ${l.lotNo} bought`})),
       ...(canAdd?entries.map((e,i)=>({v:e,c:"e",t:`Buy lot ${n+i} at or below (part ${inr(partFor(B,sym))})`})):[]),{v:p,c:"n",t:"Now"}].sort((x,y)=>y.v-x.v);
     const lo=Math.min(...pts.map(x=>x.v))*0.995, hi=Math.max(...pts.map(x=>x.v))*1.005, at=v=>(100*(v-lo)/(hi-lo)).toFixed(1);
-    h+=`<section class="card" aria-labelledby="h-${esc(sym)}">
+    h+=`<section class="card" id="pos-${esc(sym)}" aria-labelledby="h-${esc(sym)}">
      <div class="row" style="align-items:center;justify-content:space-between;gap:6px">
-      <div><h2 id="h-${esc(sym)}" style="margin:0;display:inline">${esc(sym)}</h2> ${tvLink(sym)}<br><span class="soft" style="font-size:13px">${ls.length} of 3 parts · part ${inr(partFor(B,sym))} · gap ${gap}%</span></div>
+      <div><h2 id="h-${esc(sym)}" tabindex="-1" style="margin:0;display:inline">${esc(sym)}</h2> ${tvLink(sym)}<br><span class="soft" style="font-size:13px">${ls.length} of 3 parts · part ${inr(partFor(B,sym))} · gap ${gap}%</span></div>
       <div style="text-align:right"><div class="big">${p.toFixed(2)}</div><div style="font-size:13px">${pc(dayChg(sym))} <span class="soft">${px?(px.src==="live"?"live "+esc(px.ts.slice(11,16)):px.src==="scan"?"close "+esc(px.ts):"entered "+esc(px.ts)):""}</span></div></div></div>
      <div class="tiles" style="margin-top:10px">${tile("Invested",inr(inv$))}${tile("P&L now",sgn(u),u>=0?"g":"r")}${tile("If sold now, net",sgn(net),net>=0?"g":"r")}</div>
-     ${inv?`<p class="note ${inv.hard?"bad":""}" style="margin-top:10px"><strong>${inv.hard?"INVALID":"Weakening"}:</strong> ${esc(inv.why)} (scan of ${esc(cur().as_of)}). ${inv.hard?"Do not add more. Your open lots stay until their own targets, so this money may be tied up for a while.":"Be careful before adding a part."}</p>`:""}
+     ${inv?`<p class="note ${inv.hard?"bad":""}" style="margin-top:10px"><strong>${inv.hard?"INVALID":"Weakening"}:</strong> ${esc(inv.why)} (scan of ${esc(cur().as_of)}). ${inv.hard?`<button type="button" data-askwhy="${esc(sym)}">Ask Sto-Bot why · hold or exit?</button> `:""}${inv.hard?"Do not add more. Your open lots stay until their own targets, so this money may be tied up for a while.":"Be careful before adding a part."}</p>`:""}
      ${rr?`<p class="note bad" style="margin-top:10px"><strong>Capital tied up.</strong> ${esc(rr)} Under your rule these lots are held until their targets.</p>`:""}
      ${B.blocked[sym]?`<p class="note bad" style="margin-top:10px">Buying blocked: ${esc(B.blocked[sym])} <button data-unblock="${esc(sym)}">Remove block</button></p>`:""}
      ${zone?`<p class="note good" style="margin-top:10px"><strong>Lot ${n} entry reached.</strong> ${p.toFixed(2)} is at or below ${entries[0].toFixed(2)} (${gap}% under your lowest lot at ${last.buyPrice.toFixed(2)}). Under your rule you would add one part of ${inr(partFor(B,sym))}${deployable(B)<partFor(B,sym)?` (only ${inr(deployable(B))} is free)`:""}.</p>`:""}
@@ -1051,6 +1116,10 @@ function refreshBuyCheck(){
   $("#buyBtn").disabled=!(c.allowed&&ticked);
 }
 main.addEventListener("input",e=>{if(e.target.closest("#buyF"))refreshBuyCheck();});
+main.addEventListener("change",e=>{const sl=e.target.closest&&e.target.closest("[data-range]");if(!sl)return;const sym=sl.dataset.range,slot=+sl.dataset.slot;
+  CHSEL[sym+"|"+slot]=sl.value;const d=cur(),r=d.top.concat(d.quality_misses||[]).find(x=>x.symbol===sym)||(typeof ANA!=="undefined"&&ANA.items||[]).find(x=>x.symbol===sym);if(!r)return;
+  const fig=sl.closest("[data-fig]");const tmp=document.createElement("div");tmp.innerHTML=candleFig(r,slot);fig.replaceWith(tmp.firstElementChild);
+  const again=document.getElementById(sl.id);if(again)again.focus();});
 main.addEventListener("submit",e=>{
   e.preventDefault(); const f=e.target;
   if(f.id==="anaF"){runAnalyze($("#anaQ").value);return;}
@@ -1091,6 +1160,7 @@ main.addEventListener("submit",e=>{
 });
 main.addEventListener("click",async e=>{
   const t=e.target;
+  const aw=t.closest&&t.closest("[data-askwhy]");if(aw){openChat();me("Why is "+aw.dataset.askwhy+" invalid? Is it OK to hold?");whyInvalid(aw.dataset.askwhy);return;}
   const fo=t.closest&&t.closest("[data-fold]");if(fo){setFold(fo,fo.getAttribute("aria-expanded")!=="true");saveFold();return;}
   const fa=t.closest&&t.closest("[data-foldall]");if(fa){const open=fa.dataset.foldall==="open";main.querySelectorAll(".foldbtn").forEach(b=>setFold(b,open));saveFold();return;}
   const so=t.closest&&t.closest("[data-sort20]");if(so){const k=so.dataset.sort20;SORT20.dir=SORT20.k===k?-SORT20.dir:(k==="score"?-1:1);SORT20.k=k;render();const again=document.querySelector(`[data-sort20="${k}"]`);if(again)again.focus();return;}
@@ -1146,7 +1216,12 @@ main.addEventListener("click",async e=>{
   else if(t.id==="wipe3"){render();}
   else if(t.id==="wipe2"){B=newBook();flash={cls:"",msg:"Book erased."};persist();location.hash="book";if(page()==="book")render();}
 });
-window.addEventListener("hashchange",()=>{render();main.focus();});
+window.addEventListener("hashchange",()=>{render();if(PENDPOS){const s2=PENDPOS;PENDPOS=null;goPos(s2);}else main.focus();});
+var PENDPOS=null;
+function goPos(sym){const el=document.getElementById("pos-"+sym),hd=document.getElementById("h-"+sym);if(!el)return;el.scrollIntoView({block:"start"});if(hd)hd.focus({preventScroll:true});
+  el.style.outline="2px solid var(--blue)";setTimeout(()=>{el.style.outline="";},1800);}
+$("#tape").addEventListener("click",e=>{const a=e.target.closest("[data-pos]");if(!a)return;e.preventDefault();const sym=a.dataset.pos;
+  if(location.hash==="#book"){goPos(sym);}else{PENDPOS=sym;location.hash="book";}});
 
 /* ===================== Sto-Bot (rule-based, runs in the page, no Claude usage) ===================== */
 const CH={state:null,data:{},acts:{},undo:null,opened:false};
@@ -1171,7 +1246,7 @@ function say(html,chips){const el=document.createElement("div");el.className="ms
 function me(text){const el=document.createElement("div");el.className="msg me";el.textContent=text;$("#log").appendChild(el);$("#log").scrollTop=1e9;}
 function setChips(list){CH.acts={};$("#chips").innerHTML=list.map((c,i)=>{CH.acts[i]=c;return `<button type="button" data-chip="${i}" class="${c.go?"go":""}">${esc(c.label)}</button>`;}).join("");}
 function mainChips(){const c=[{label:"I bought a stock",act:()=>startBuy()},{label:"I sold a lot",act:()=>startSell()},
-  {label:"My open stocks",act:()=>showOpen()},{label:"When can I sell?",act:()=>whenSell()},{label:"Next buy levels",act:()=>nextBuys()},{label:"Today's top picks",act:()=>topPicks()},{label:"📰 Stock news",act:()=>askNews()}];
+  {label:"My open stocks",act:()=>showOpen()},{label:"When can I sell?",act:()=>whenSell()},{label:"Next buy levels",act:()=>nextBuys()},{label:"Today's top picks",act:()=>topPicks()},{label:"📰 Stock news",act:()=>askNews()},{label:"Why invalid? Hold or exit?",act:()=>whyInvalid()}];
   if(CH.undo)c.push({label:"Undo last entry",act:()=>undo()});return c;}
 function reset(){CH.state=null;CH.data={};}
 
@@ -1275,6 +1350,37 @@ function undo(){if(!CH.undo)return;B=migrate(JSON.parse(CH.undo));CH.undo=null;p
 function cancel(){reset();say("Cancelled. Nothing was recorded.");}
 
 /* ---------- free text ---------- */
+function invalidKind(why){return /Fundamental red flag/i.test(why)?"company":/Failed screening/i.test(why)?"screen":/Price structure/i.test(why)?"chart":/invalidation level/i.test(why)?"level":/No price/i.test(why)?"data":"other";}
+function whyInvalid(sym){reset();const hs=held(B);
+  if(!sym){const bad=hs.filter(x=>invalidity(x)&&invalidity(x).hard);
+    if(!hs.length)return say("You hold no stocks right now. Type any stock, e.g. <em>why is PNB invalid</em>, and I will check it against the latest scan.");
+    return say(bad.length?`These held stocks are marked invalid: <strong>${bad.map(esc).join(", ")}</strong>. Pick one and I'll explain why and what your rules say about holding it.`:`None of your held stocks is invalid in the latest scan (${esc(cur().as_of)}). Pick one to check anyway.`,
+      [...(bad.length?bad:hs).slice(0,6).map(x=>({label:"Why "+x+"?",act:()=>whyInvalid(x)})),{label:"Back",act:()=>say("What next?")}]);}
+  const d=cur(),inv=invalidity(sym),r=d.top.concat(d.quality_misses||[]).find(x=>x.symbol===sym),sn=(d.snapshot||{})[sym],ls=lotsOf(B,sym),t=B.settings.targetPct;
+  if(!inv||!inv.hard){let m=`<strong>${esc(sym)} is not invalid</strong> in the scan of ${esc(d.as_of)}.`;
+    if(r)m+=` It scores ${r.score.toFixed(0)}/100 and reads <em>${esc((READ[r.colour]||READ.GREY)[1])}</em>.`;else if(sn)m+=` It is not in today's 80+ list, but no red flag was found.`;
+    if(inv&&!inv.hard)m+=` One caution: ${esc(inv.why)}`;
+    if(ls.length)m+=` Your rules: keep holding; each lot sells at +${t}% of its own price.`;
+    return say(m,[{label:"📰 "+sym+" news",act:()=>newsFor(sym)},{label:"When can I sell?",act:()=>whenSell(sym)}]);}
+  const k=invalidKind(inv.why),plain={company:"the company itself showed a warning sign in its financial data (for example falling profit, high debt or negative cash flow). This is the most serious kind.",
+    screen:"it no longer passes one of the tool's basic checks (for example trading volume, price level or listing age).",
+    chart:"its price chart has turned weak (the trend changed to down or sideways with selling). It is a timing warning, not a company problem.",
+    level:"it closed below the level where the original buy idea stops working.",
+    data:"Yahoo Finance did not return a price for it on that scan. This is usually a data gap, not a problem with the stock. Check the price at your broker; if it trades normally, ignore this.",
+    other:"it failed one of the tool's checks."}[k];
+  let m=`<strong>Why ${esc(sym)} is invalid:</strong> ${esc(inv.why)}.<br>In plain words: ${plain}`;
+  if(!ls.length){m+=`<br><br>You don't hold it, so the simple answer is: don't start a new position while it's invalid.`;
+    return say(m,[{label:"📰 "+sym+" news",act:()=>newsFor(sym)},{label:"Back",act:()=>say("What next?")}]);}
+  const px=lastPrice(sym)||ls[0].buyPrice,rows=ls.map(l=>{const pct=100*(px/l.buyPrice-1);return{l,pct,tgt:l.target||l.buyPrice*(1+t/100)};});
+  const atT=rows.filter(x=>px>=x.tgt),inP=rows.filter(x=>x.pct>0&&px<x.tgt),inL=rows.filter(x=>x.pct<=0);
+  m+=`<br><br><strong>Your ${ls.length} lot${ls.length>1?"s":""} at ${px.toFixed(2)}:</strong> `+rows.map(x=>`lot ${x.l.lotNo} bought ${x.l.buyPrice.toFixed(2)} → <span class="${x.pct>=0?"pos":"neg"}">${x.pct>=0?"+":""}${x.pct.toFixed(1)}%</span> (target ${x.tgt.toFixed(2)})`).join("; ")+".";
+  m+=`<br><br><strong>Is it OK to hold, or should you exit?</strong> By your own rules:<ul>`;
+  m+=`<li>Don't buy the next part while it's invalid. The tool blocks it.</li>`;
+  if(atT.length)m+=`<li>Lot${atT.length>1?"s":""} ${atT.map(x=>x.l.lotNo).join(", ")} ${atT.length>1?"are":"is"} at or above +${t}%: sell ${atT.length>1?"them":"it"} as your rule says.</li>`;
+  if(inP.length)m+=`<li>Lot${inP.length>1?"s":""} ${inP.map(x=>x.l.lotNo).join(", ")} ${inP.length>1?"are":"is"} in profit but below +${t}%. ${k==="company"?"With a company warning, many traders take the small profit rather than wait. Your rule allows it, since it isn't a loss (after charges).":k==="data"?"Nothing to do: likely just a data gap.":"A chart or timing warning usually means waiting for +"+t+"% may take longer. Holding is within your rules; taking the small profit is also allowed."}</li>`;
+  if(inL.length)m+=`<li>Lot${inL.length>1?"s":""} ${inL.map(x=>x.l.lotNo).join(", ")} ${inL.length>1?"are":"is"} below your buy price. Your rule is <strong>never sell at a loss</strong>, so the rule says hold. ${k==="company"?"Be aware: a company warning is the case where holding carries the most risk of a long wait. Read the news first.":k==="data"?"Likely just a data gap.":"A chart warning alone is usually a timing issue; the replays showed most such lots recover, but some took months."}</li>`;
+  m+=`</ul><span class="soft">This applies your own rules to the latest scan. It is not financial advice; the decision is yours.</span>`;
+  say(m,[{label:"📰 "+sym+" news",act:()=>newsFor(sym)},{label:"When can I sell?",act:()=>whenSell(sym)},{label:"Other invalid stocks",act:()=>whyInvalid()}]);}
 function handle(text){
   const t=text.trim();if(!t)return;me(t);const low=t.toLowerCase(),n=parseNums(t),sym=findSym(t),d=CH.data;
   if(/^(cancel|stop|no)$/i.test(t))return cancel();
@@ -1292,6 +1398,7 @@ function handle(text){
     else{if(n.price!=null)d.price=n.price;if(n.qty!=null)d.qty=n.qty;}
     return CH.state==="buy"?nextBuyStep():nextSellStep();}
   if(CH.state==="news")return newsFor(t);
+  if(/invalid|why.*(avoid|red|flag)|ok to hold|okay to hold|should i (hold|exit|sell)|exit it|hold or (exit|sell)/.test(low))return whyInvalid(sym&&sym!=="OK"?sym:null);
   if(/\bnews\b|headline/.test(low)){const q=t.replace(/\b(latest|recent|today'?s?|news|headlines?|about|of|for|on|the|show|me|get|give|any|stock|share|what'?s|is|there)\b/gi," ").replace(/[?!.]/g," ").trim();return q?newsFor(sym||q):askNews();}
   if(/^(hi|hello|hey|help|hai)\b/i.test(t))return say("I can record your buys and sales, answer about your open stocks, sell targets and next buy levels, and fetch the latest news of any stock with a good/bad verdict. Type a stock, e.g. <em>PNB</em>, or tap a button.");
   if(/next (buy|entry|level)|buy levels?|averag|add more/.test(low))return nextBuys();
