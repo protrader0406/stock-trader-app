@@ -53,6 +53,7 @@ nav a[aria-current="page"]{color:var(--accent-ink);background:linear-gradient(90
 .foldbtn{flex:none;min-width:34px;min-height:34px;padding:0 8px;margin-right:6px;font-size:16px;line-height:1;border-radius:8px}
 .foldbar{display:flex;gap:6px;flex-wrap:wrap;margin:0 0 10px}
 .sortbtn{all:unset;cursor:pointer;font:inherit;font-weight:600;white-space:nowrap}.sortbtn:focus-visible{outline:2px solid var(--blue);outline-offset:2px;border-radius:4px}
+td input[type=checkbox]{width:20px;height:20px;min-height:0;margin:0}
 fieldset input[type=checkbox]{width:20px;height:20px;min-height:0;margin:0;flex:none}#absCk label,#absRpF label{flex:1 1 170px}#absRpF fieldset label{flex:none}
 #goldRpF input[type=checkbox]{width:20px;height:20px;min-height:0;margin:0;flex:none}#goldRpF label{flex:1 1 150px}#goldRpF fieldset label{flex:none}
 .chartbar{display:flex;gap:6px;align-items:center;margin:0 0 4px}.chartbar .rangesel{flex:1;margin:0}.fsbtn{flex:none;min-width:38px;min-height:34px;padding:0 8px;font-size:17px;line-height:1}
@@ -84,7 +85,9 @@ details summary{cursor:pointer;color:var(--accent);font-weight:600;min-height:32
 .checks{display:flex;flex-direction:column;gap:6px;margin:8px 0}
 .checks label{flex-direction:row;align-items:flex-start;gap:10px;color:var(--ink);font-size:15px;flex:none}
 .checks input{width:22px;min-height:22px;height:22px;flex:none;margin-top:2px}
-.scroll{overflow-x:auto}
+.scroll{overflow:auto;max-height:min(75vh,900px);overscroll-behavior:contain}
+.scroll thead th{position:sticky;top:0;z-index:2;background:var(--card);box-shadow:0 1px 0 rgba(255,255,255,.12)}
+.scroll:focus-visible{outline:2px solid var(--blue);outline-offset:2px}
 table{border-collapse:collapse;width:100%;font-size:14px}
 th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);white-space:nowrap}
 th{color:var(--soft);font-weight:600}td.r,th.r{text-align:right}
@@ -530,7 +533,8 @@ function render(){
   $("#nav").innerHTML=PAGES.map(([id,t])=>`<a href="#${id}" ${id===p?'aria-current="page"':""}>${t}</a>`).join("");
   $("#tape").innerHTML=tape();
   main.innerHTML=(flash?`<p class="note ${flash.cls}" role="status">${esc(flash.msg)}</p>`:"")+VIEWS[p]();
-  if(["top20","best20","sectors","gold","absorb","perf"].includes(p)) makeFoldable(main);
+  if(["top20","best20","sectors","gold","absorb","perf","book"].includes(p)) makeFoldable(main);
+  labelScrollers(main);
   flash=null;if(p==="setup"){fillWa();fillCloud();}
 }
 const tile=(k,v,c)=>`<div class="tile ${c||""}"><div class="k">${esc(k)}</div><div class="v">${v}</div></div>`;
@@ -579,6 +583,10 @@ function picksSection(){
 let SORT20={k:"rank",dir:1};
 const FOLD=(()=>{try{return new Set(JSON.parse(localStorage.getItem("nse-fold")||"[]"));}catch(e){return new Set();}})();
 function saveFold(){try{localStorage.setItem("nse-fold",JSON.stringify([...FOLD]));}catch(e){}}
+/* Long tables scroll inside their box with the header kept in view; make those boxes reachable by keyboard. */
+function labelScrollers(root){root.querySelectorAll(".scroll").forEach(el=>{const big=el.scrollHeight>el.clientHeight+2||el.scrollWidth>el.clientWidth+2;
+  if(big){const sec=el.closest("section,details"),h=sec&&sec.querySelector("h2,h3,summary");el.tabIndex=0;el.setAttribute("role","region");el.setAttribute("aria-label",(h?h.textContent.replace(/[▾▸]/g,"").trim():"Table")+" (scrollable table)");}
+  else{el.removeAttribute("tabindex");el.removeAttribute("role");el.removeAttribute("aria-label");}});}
 function makeFoldable(root){let n=0;
   const secs=[...root.children].filter(el=>el.matches("section.card")&&!el.classList.contains("filters"));
   for(const el of secs){const head=el.firstElementChild,h2=el.querySelector("h2");if(!head||!h2||!head.contains(h2)||!head.nextElementSibling)continue;
@@ -589,7 +597,7 @@ function makeFoldable(root){let n=0;
     if(head===h2){h2.style.display="flex";h2.style.alignItems="center";h2.prepend(b);}else{const row=h2.closest(".row")||head;row.prepend(b);}}
   if(n){const bar=document.createElement("div");bar.className="foldbar";bar.innerHTML='<button type="button" data-foldall="open">Expand all</button><button type="button" data-foldall="close">Collapse all</button>';
     const first=secs.find(s=>s.querySelector(".foldbtn"));if(first)first.before(bar);}}
-function setFold(b,open){const body=document.getElementById(b.getAttribute("aria-controls"));if(!body)return;body.hidden=!open;b.setAttribute("aria-expanded",String(open));b.textContent=open?"▾":"▸";
+function setFold(b,open){const body=document.getElementById(b.getAttribute("aria-controls"));if(!body)return;body.hidden=!open;if(open)setTimeout(()=>labelScrollers(body),0);b.setAttribute("aria-expanded",String(open));b.textContent=open?"▾":"▸";
   b.setAttribute("aria-label",(open?"Hide ":"Show ")+b.getAttribute("aria-label").replace(/^(Show|Hide) /,""));open?FOLD.delete(b.dataset.fold):FOLD.add(b.dataset.fold);}
 var GR={res:null,busy:false,err:null,loaded:false,params:{timeframe:"15m",days:"",target:30,stop:20,breakeven_at:15,daily_goal:30,daily_max_loss:40,max_trades:2,spread:0.4,retest_pad:2,use_bias:true,setup_a:true,setup_b:true,setup_c:false,strategy:"trend",capital:10000,per_001:300,grow:false,years:"",stop_atr:2.5,pullback:true,long_only:false,fast:20,slow:50}};
 try{const sp=JSON.parse(localStorage.getItem("gold-replay-params")||"null");if(sp)Object.assign(GR.params,sp);}catch(e){}
@@ -711,6 +719,81 @@ function goldReplayHtml(){const p=GR.params,R=GR.res;const num=(k,l,st)=>`<label
    </tbody></table></div></details>
    <p class="soft" style="font-size:13px;margin:8px 0 0">${R.timeframe==="1h"?"Hourly candles hide the order of moves inside each hour, so when both target and stop fall in the same hour it counts the stop: results here lean pessimistic. ":""}Past results don't promise future ones; news spikes and slippage at your broker can make real fills worse.</p></section>`;
   return h;}
+/* ---------- Import from Groww report files (free; no login or API). Never places orders. ---------- */
+var GI={busy:false,err:null,data:null,rows:[],done:null};
+function giNear(a,b){return Math.abs(a-b)<=Math.max(0.05,Math.abs(b)*0.005);}
+function giPickSellLots(C,t){
+  const open=active(C).filter(l=>l.symbol===t.symbol&&l.buyDate<=t.date);
+  const same=open.filter(l=>l.qty===t.qty);
+  if(same.length){const hit=same.filter(l=>l.target<=t.price+0.01).sort((a,b)=>a.buyDate.localeCompare(b.buyDate));
+    return[(hit[0]||same.sort((a,b)=>a.buyPrice-b.buyPrice)[0]).id];}
+  const tot=open.reduce((a,l)=>a+l.qty,0);if(open.length&&tot===t.qty)return open.map(l=>l.id);
+  const fifo=open.slice().sort((a,b)=>a.buyDate.localeCompare(b.buyDate)||a.id-b.id);let q=0;const ids=[];
+  for(const l of fifo){if(q>=t.qty)break;q+=l.qty;ids.push(l.id);}return q===t.qty?ids:null;}
+/* Work out, on a copy of the book, what each Groww row would do. */
+function giPlan(Bk,data,checked){
+  const C=JSON.parse(JSON.stringify(Bk)),rows=[];
+  if(data.kind==="orders"){
+    data.trades.forEach((t,i)=>{const r={i,t,act:null,why:"",ok:false};rows.push(r);
+      if(!t.symbol){r.why="Stock not recognised: type its NSE symbol";return;}
+      if(t.side==="BUY"){
+        if(C.lots.some(l=>l.symbol===t.symbol&&l.buyDate===t.date&&l.qty===t.qty&&giNear(l.buyPrice,t.price))){r.why="Already in the app";return;}
+        r.act="buy";r.ok=true;r.why=`Add as lot ${Math.min(3,nextLotNo(C,t.symbol))}`;
+        if(!checked||checked.has(i)){try{recordBuy(C,t.symbol,t.price,t.qty,t.date,"Groww import");}catch(e){r.ok=false;r.why=e.message;}}
+      }else{
+        if(C.lots.some(l=>l.symbol===t.symbol&&l.status==="CLOSED"&&l.exitDate===t.date&&l.qty===t.qty&&giNear(l.exitPrice,t.price))){r.why="Already in the app";return;}
+        const ids=giPickSellLots(C,t);
+        if(!ids){const op=active(C).filter(l=>l.symbol===t.symbol);r.why=op.length?`Sold ${t.qty}, but the app's open lots are ${op.map(l=>"lot "+l.lotNo+": "+l.qty).join(", ")}. Record this sale by hand`:"No open lot in the app for this stock (import the earlier buys too)";return;}
+        const ls=ids.map(id=>C.lots.find(l=>l.id===id));r.act="sell";r.ok=true;r.lots=ls.map(l=>l.lotNo);
+        const pl=ls.reduce((a,l)=>a+(t.price-l.buyPrice)*l.qty,0);
+        r.why=`Close ${ls.map(l=>`lot ${l.lotNo} (bought ${l.buyPrice.toFixed(2)})`).join(" + ")}: about ${pl>=0?"+":"−"}₹${Math.abs(Math.round(pl)).toLocaleString("en-IN")}${ls.some(l=>t.price<l.target)?" · below its +3% target":""}`;
+        if(!checked||checked.has(i)){try{for(const l of ls)sell(C,l.id,t.price,t.date,t.price>=l.target?"TARGET (Groww import)":"MANUAL (Groww import)");}catch(e){r.ok=false;r.why=e.message;}}
+      }});
+  }else{
+    const gs=new Set();
+    data.holdings.forEach((h,i)=>{const r={i,h,act:null,why:"",ok:false};rows.push(r);
+      if(!h.symbol){r.why="Stock not recognised: type its NSE symbol";return;}gs.add(h.symbol);
+      const ls=lotsOf(C,h.symbol),q=ls.reduce((a,l)=>a+l.qty,0),avg=q?ls.reduce((a,l)=>a+l.qty*l.buyPrice,0)/q:0;r.appQty=q;r.appAvg=avg;
+      if(q===h.qty&&giNear(avg,h.avg)){r.why="✓ Matches";return;}
+      if(q===h.qty){r.why=`Same quantity; average differs (app ${avg.toFixed(2)})`;return;}
+      if(!q){r.act="buy";r.ok=true;r.why="Not in the app: add as 1 lot at Groww's average price";
+        if(!checked||checked.has(i)){try{recordBuy(C,h.symbol,h.avg,h.qty,today(),"Groww holdings import");}catch(e){r.ok=false;r.why=e.message;}}return;}
+      r.why=`Quantity differs: app ${q}, Groww ${h.qty}. Import the order history to fix it`;});
+    held(C).filter(sym=>!gs.has(sym)).forEach(sym=>rows.push({i:-1,h:{symbol:sym,name:"",qty:0,avg:0},appQty:lotsOf(C,sym).reduce((a,l)=>a+l.qty,0),why:"In the app but not in Groww: probably sold. Import the order history",ok:false}));
+  }
+  return{rows,C};}
+function giHtml(){const D=GI.data,f=v=>v==null?"–":Number(v).toLocaleString("en-IN",{minimumFractionDigits:2,maximumFractionDigits:2});
+  let h=`<section class="card"><h2>Import from Groww (free)</h2>
+   <p class="soft" style="margin:0 0 8px">Keep Positions matching your Groww account without typing. Nothing is sent to Groww, and the app never places orders.</p>
+   <ol style="margin:0 0 8px 18px;line-height:1.55"><li>In Groww: <strong>Profile → Reports</strong>. For buys and sells choose <strong>Transactions → Stocks order history</strong>, pick the dates, and download as Excel. To check what you hold, choose <strong>Holdings → Stocks holdings statement</strong>.</li>
+   <li>Choose the file below. You'll see what would change, and nothing is saved until you press <strong>Apply</strong>.</li></ol>
+   ${LOCAL?`<div class="row" style="gap:8px;align-items:center;flex-wrap:wrap"><button type="button" class="primary" data-gipick="1">📄 Choose Groww file (.xlsx or .csv)</button><input id="giFile" type="file" accept=".xlsx,.csv,.xlsm" hidden>
+     ${(()=>{try{return localStorage.getItem("book-before-groww")?'<button type="button" data-giundo="1">↶ Undo last import</button>':"";}catch(e){return"";}})()}</div>`:`<p class="note">Importing works in the Windows app on your laptop; the result then syncs here.</p>`}
+   ${GI.busy?`<p class="note" role="status">Reading the file…</p>`:""}${GI.err?`<p class="note bad" role="alert">${esc(GI.err)}</p>`:""}${GI.done?`<p class="note good" role="status">${esc(GI.done)}</p>`:""}`;
+  if(D){const R=GI.rows,act=R.filter(r=>r.ok),orders=D.kind==="orders";
+    h+=`<h3 style="margin:12px 0 4px">${orders?`Order history: ${D.trades.length} executed trades`:`Holdings statement: ${D.holdings.length} stocks`} · ${esc(D.file||"")}</h3>
+    ${(D.warnings||[]).map(w=>`<p class="soft" style="margin:2px 0">${esc(w)}</p>`).join("")}
+    <p class="soft" style="margin:4px 0 8px">${act.length} change${act.length===1?"":"s"} ready, ${R.filter(r=>/Already|Matches/.test(r.why)).length} already match. Untick any row you don't want.</p>
+    <div class="scroll"><table><thead><tr><th scope="col"><span class="sr">Include</span></th>${orders?`<th>Date</th><th>Stock</th><th>Side</th><th class="r">Qty</th><th class="r">Price</th>`:`<th>Stock</th><th class="r">Groww qty</th><th class="r">Groww avg</th><th class="r">App qty</th>`}<th>What happens</th></tr></thead><tbody>
+    ${R.map(r=>{const x=r.t||r.h,cb=r.ok?`<input type="checkbox" data-gicb="${r.i}" ${!GI.off||!GI.off.has(r.i)?"checked":""} aria-label="Include ${esc(x.symbol||x.name)}">`:"",
+      symCell=x.symbol?`<strong>${esc(x.symbol)}</strong>`:`<label>${esc(x.name)}<input data-gisym="${r.i}" placeholder="NSE symbol" style="width:120px;margin-left:6px"></label>`;
+      return orders?`<tr><td>${cb}</td><td>${esc(x.date)} <span class="soft">${esc(x.time||"")}</span></td><td>${symCell}</td><td>${x.side==="BUY"?'<span class="pos">BUY</span>':'<span class="neg">SELL</span>'}</td><td class="r">${x.qty}</td><td class="r">${f(x.price)}</td><td>${r.ok?esc(r.why):`<span class="soft">${esc(r.why)}</span>`}</td></tr>`
+        :`<tr><td>${cb}</td><td>${symCell}</td><td class="r">${x.qty||"–"}</td><td class="r">${x.avg?f(x.avg):"–"}</td><td class="r">${r.appQty??"–"}</td><td>${/Matches/.test(r.why)?`<span class="pos">${esc(r.why)}</span>`:r.ok?esc(r.why):`<span class="amb">${esc(r.why)}</span>`}</td></tr>`;}).join("")}
+    </tbody></table></div>
+    <div class="row" style="gap:8px;margin-top:10px"><button type="button" class="primary" data-giapply="1" ${act.length?"":"disabled"}>Apply ${act.filter(r=>!GI.off||!GI.off.has(r.i)).length} change(s)</button><button type="button" data-giclear="1">Cancel</button></div>
+    <p class="soft" style="font-size:13px;margin:6px 0 0">Buys are added as your next lot (charges estimated as in Add buy). A sale closes the lot with the same quantity, preferring one that has reached its +3% target; a full exit closes all lots. A backup is kept, so you can undo the last import.</p>`;}
+  return h+`</section>`;}
+function giReplan(){if(!GI.data)return;const checked=new Set(GI.rows.length?GI.rows.filter(r=>!(GI.off&&GI.off.has(r.i))).map(r=>r.i):(GI.data.trades||GI.data.holdings).map((_,i)=>i));
+  GI.rows=giPlan(B,GI.data,checked).rows;}
+async function giUpload(file){GI.busy=true;GI.err=null;GI.done=null;GI.data=null;GI.rows=[];GI.off=new Set();render();
+  try{const buf=new Uint8Array(await file.arrayBuffer());let bin="";for(let i=0;i<buf.length;i+=0x8000)bin+=String.fromCharCode.apply(null,buf.subarray(i,i+0x8000));
+    const r=await fetch("/api/groww/parse",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({name:file.name,b64:btoa(bin)})}).then(x=>x.json());
+    if(!r.ok)throw new Error(r.error||"Could not read the file.");GI.data=r;GI.rows=[];giReplan();}
+  catch(e){GI.err=e.message;}GI.busy=false;render();}
+function giApply(){const checked=new Set(GI.rows.filter(r=>r.ok&&!(GI.off&&GI.off.has(r.i))).map(r=>r.i));if(!checked.size)return;
+  try{localStorage.setItem("book-before-groww",JSON.stringify(B));}catch(e){}
+  const {rows,C}=giPlan(B,GI.data,checked);const n=rows.filter(r=>r.ok&&checked.has(r.i)).length;
+  B=C;B.peak=Math.max(B.peak,equity(B));markTargets(B);persist();GI.done=`Applied ${n} change${n===1?"":"s"} from Groww. Undo is available until the next import.`;GI.data=null;GI.rows=[];render();}
 var ABSD=null;
 var ABS=(()=>{const d={risk:2,inst:"nifty",dir:"long",size:"",ext:false,rej:false,closed:false,zone:false,liq:false,px:"",open:"",swing:"",buf:2,lot:75,cap:"",thr:15000};try{return Object.assign(d,JSON.parse(localStorage.getItem("abs-ck")||"{}"));}catch(e){return d;}})();
 var AJ=(()=>{try{return JSON.parse(localStorage.getItem("abs-journal")||"[]");}catch(e){return[];}})();
@@ -1277,6 +1360,7 @@ book(){
   h+=`<p class="note info">Your rules: a new stock gets free cash ÷ 3 per part · each stock has its own gap for the next part, chosen from its own past · every lot sells only at +${s.targetPct}% of its own price · money from a sold lot is free for any stock. ${LOCAL?"Prices refresh every 5 minutes while this window is open in market hours (or tap Refresh prices), and from each evening's close.":"Prices update from your laptop a few times a day and from each evening's close."} Record trades with the chat button. Nothing here places an order.</p>`;
   if(!hs.length){
     h+=`<section class="card"><h2>No open positions</h2><p>Holding cash is a valid position. When you buy, record it under <a href="#buy">Add buy</a>, or tell Claude the stock, price and quantity.</p></section>`;
+    h+=giHtml();
     return h;
   }
   for(const sym of hs){
@@ -1320,6 +1404,7 @@ book(){
       <button class="primary" style="flex:none">Update price</button></form></details>
     </section>`;
   }
+  h+=giHtml();
   return h;
 },
 buy(){
@@ -1413,6 +1498,12 @@ function onRange(e){const sl=e.target.closest&&e.target.closest("[data-range]");
   const again=document.getElementById(sl.id);if(again)again.focus();
   if(big){const card=main.querySelector(`[data-fig="${sym}|${slot}"]`);if(card){const t2=document.createElement("div");t2.innerHTML=candleFig(r,slot);card.replaceWith(t2.firstElementChild);}}}
 main.addEventListener("change",onRange);
+main.addEventListener("change",e=>{const t=e.target;
+  if(t.id==="giFile"&&t.files&&t.files[0]){giUpload(t.files[0]);return;}
+  if(t.dataset&&t.dataset.gicb!=null){GI.off=GI.off||new Set();const i=+t.dataset.gicb;t.checked?GI.off.delete(i):GI.off.add(i);giReplan();render();const a=main.querySelector(`[data-gicb="${i}"]`);if(a)a.focus();return;}
+  if(t.dataset&&t.dataset.gisym!=null){const i=+t.dataset.gisym,v=t.value.trim().toUpperCase();if(!v)return;const L=GI.data.kind==="orders"?GI.data.trades:GI.data.holdings;
+    const nm=L[i].name;L.forEach(x=>{if(!x.symbol&&x.name===nm)x.symbol=v;});GI.rows=[];giReplan();render();}});
+main.addEventListener("toggle",()=>labelScrollers(main),true);
 main.addEventListener("change",e=>{const y=e.target.closest&&e.target.closest("[data-btyear]");if(!y||!y.value)return;BT.period=y.value;render();const a=main.querySelector("[data-btyear]");if(a)a.focus();});
 function absInput(e){const el=e.target.closest&&e.target.closest("[data-absk]");if(!el)return;const k=el.dataset.absk;ABS[k]=el.type==="checkbox"?el.checked:el.value;saveAbs();
   if(e.type==="change"||el.type==="checkbox"||el.tagName==="SELECT"){const id=el.dataset.absk,st=el.selectionStart;render();const again=main.querySelector(`[data-absk="${id}"]`);if(again){again.focus();try{if(st!=null&&again.setSelectionRange)again.setSelectionRange(st,st);}catch(er){}}}}
@@ -1467,6 +1558,10 @@ main.addEventListener("submit",e=>{
 });
 main.addEventListener("click",async e=>{
   const t=e.target;
+  if(t.closest&&t.closest("[data-gipick]")){const f=document.getElementById("giFile");if(f){f.value="";f.click();}return;}
+  if(t.closest&&t.closest("[data-giapply]")){giApply();return;}
+  if(t.closest&&t.closest("[data-giclear]")){GI.data=null;GI.rows=[];GI.err=null;render();return;}
+  if(t.closest&&t.closest("[data-giundo]")){try{const b=localStorage.getItem("book-before-groww");if(b){B=JSON.parse(b);localStorage.removeItem("book-before-groww");persist();GI.done="Last Groww import undone.";render();}}catch(e){}return;}
   const arr=t.closest&&t.closest("[data-arreset]");if(arr){try{localStorage.removeItem("abs-rp");}catch(er){}Object.assign(AR.p,{years:"",symbols:"",sector:"",risk_pct:2,max_open:5,vol_mult:1.8,wick_min:0.4,close_pos:0.6,max_touches:2,impulse_atr:2,rr:2,max_days:20,max_risk_atr:2.5,stop_pad_atr:0.1,cost_pct:0.15,need_zone:true,need_sweep:false,block_supply:false});render();return;}
   const al=t.closest&&t.closest("[data-abslog]");if(al){const R=ckResult(),c=ABS;if(R.ok&&R.plan){AJ.push({id:Date.now(),t:new Date().toLocaleString("en-IN",{dateStyle:"short",timeStyle:"short"}),inst:c.inst,dir:c.dir,size:+c.size,liq:!!c.liq,entry:+c.open,stop:R.plan.stop,tgt:R.plan.tgt,res:null});saveAbs();render();}return;}
   const ajr=t.closest&&t.closest("[data-ajres]");if(ajr){const j=AJ.find(x=>String(x.id)===ajr.dataset.aj);if(j){j.res=ajr.dataset.ajres;saveAbs();render();}return;}
@@ -1532,7 +1627,8 @@ main.addEventListener("click",async e=>{
 });
 window.addEventListener("hashchange",()=>{render();if(PENDPOS){const s2=PENDPOS;PENDPOS=null;goPos(s2);}else main.focus();});
 var PENDPOS=null;
-function goPos(sym){const el=document.getElementById("pos-"+sym),hd=document.getElementById("h-"+sym);if(!el)return;el.scrollIntoView({block:"start"});if(hd)hd.focus({preventScroll:true});
+function goPos(sym){const el=document.getElementById("pos-"+sym),hd=document.getElementById("h-"+sym);if(!el)return;
+  const fb=el.querySelector(".foldbtn");if(fb&&fb.getAttribute("aria-expanded")==="false"){setFold(fb,true);saveFold();}el.scrollIntoView({block:"start"});if(hd)hd.focus({preventScroll:true});
   el.style.outline="2px solid var(--blue)";setTimeout(()=>{el.style.outline="";},1800);}
 $("#tape").addEventListener("click",e=>{const a=e.target.closest("[data-pos]");if(!a)return;e.preventDefault();const sym=a.dataset.pos;
   if(location.hash==="#book"){goPos(sym);}else{PENDPOS=sym;location.hash="book";}});
