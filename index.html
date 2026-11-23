@@ -54,7 +54,7 @@ nav a[aria-current="page"]{color:var(--accent-ink);background:linear-gradient(90
 .foldbar{display:flex;gap:6px;flex-wrap:wrap;margin:0 0 10px}
 .sortbtn{all:unset;cursor:pointer;font:inherit;font-weight:600;white-space:nowrap}.sortbtn:focus-visible{outline:2px solid var(--blue);outline-offset:2px;border-radius:4px}
 td input[type=checkbox]{width:20px;height:20px;min-height:0;margin:0}
-fieldset input[type=checkbox]{width:20px;height:20px;min-height:0;margin:0;flex:none}#absCk label,#absRpF label{flex:1 1 170px}#absRpF fieldset label{flex:none}
+fieldset input[type=checkbox]{width:20px;height:20px;min-height:0;margin:0;flex:none}#absCk label,#absRpF label{flex:1 1 170px}#absRpF fieldset label{flex:none}#fnoF label{flex:1 1 150px}#fnoF label.row{flex-direction:row!important;justify-content:flex-start;text-align:left;align-items:center}#fnoF input[type=checkbox]{width:20px;height:20px;min-height:0;margin:0;flex:none}#fnoF fieldset.fnoInd>label.row{flex:0 0 100%}
 #goldRpF input[type=checkbox]{width:20px;height:20px;min-height:0;margin:0;flex:none}#goldRpF label{flex:1 1 150px}#goldRpF fieldset label{flex:none}
 .chartbar{display:flex;gap:6px;align-items:center;margin:0 0 4px}.chartbar .rangesel{flex:1;margin:0}.fsbtn{flex:none;min-width:38px;min-height:34px;padding:0 8px;font-size:17px;line-height:1}
 #fsDlg{width:100vw;max-width:100vw;height:100vh;max-height:100vh;margin:0;padding:14px 18px;border:0;background:var(--bg,#0b1220);color:inherit}#fsDlg::backdrop{background:rgba(0,0,0,.7)}#fsDlg .fsh{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:8px}#fsDlg .chart svg{max-height:calc(100vh - 190px)}
@@ -359,7 +359,7 @@ function applyScan(){
   }
   if(changed) persist();
 }
-const PAGES=[["top20","All 80+ stocks"],["best20","Top 20"],["sectors","Sector wise"],["absorb","Absorption setups"],["gold","Gold XAU/USD"],["analyze","Analyze other stocks"],["book","Positions"],["perf","Performance"],["invalid","Became invalid"],["buy","Add buy"],["ledger","History"],["setup","Setup"],["faq","FAQ"]];
+const PAGES=[["top20","All 80+ stocks"],["best20","Top 20"],["sectors","Sector wise"],["absorb","Absorption setups"],["fno","F&O backtest"],["gold","Gold XAU/USD"],["analyze","Analyze other stocks"],["book","Positions"],["perf","Performance"],["invalid","Became invalid"],["buy","Add buy"],["ledger","History"],["setup","Setup"],["faq","FAQ"]];
 const KEY="tranche-book-v1";
 let B=newBook(), cloudRef=null, writing=false, dirty=false, flash=null, scanNote="";
 const REASSESS=["I re-read the latest results and announcements: fundamentals are still healthy.",
@@ -533,7 +533,7 @@ function render(){
   $("#nav").innerHTML=PAGES.map(([id,t])=>`<a href="#${id}" ${id===p?'aria-current="page"':""}>${t}</a>`).join("");
   $("#tape").innerHTML=tape();
   main.innerHTML=(flash?`<p class="note ${flash.cls}" role="status">${esc(flash.msg)}</p>`:"")+VIEWS[p]();
-  if(["top20","best20","sectors","gold","absorb","perf","book"].includes(p)) makeFoldable(main);
+  if(["top20","best20","sectors","gold","absorb","fno","perf","book"].includes(p)) makeFoldable(main);
   labelScrollers(main);
   flash=null;if(p==="setup"){fillWa();fillCloud();}
 }
@@ -1104,8 +1104,92 @@ async function runAnalyze(q){q=(q||"").trim();if(!q||ANA.busy)return;ANA.busy=q;
   const r=await fetch("/api/analyze",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({query:q})}).then(x=>x.json()).catch(()=>({ok:false,error:"The app is not responding."}));
   ANA.busy="";if(r.ok){ANA.items=[r.item,...ANA.items.filter(x=>x.symbol!==r.item.symbol)];setTimeout(pollLocal,20000);}else ANA.err=r.error||"Could not analyse that stock.";
   render();const el=$("#anaQ");if(el&&!r.ok)el.focus();}
+// ---------------- F&O strategy builder backtest
+const FNO_DEF={instrument:"NIFTY",lot_size:"",mode:"future",timeframe:"15m",years:3,days:59,direction:"both",combine:"all",entry:"fresh",exit_on:"flip",
+  ma_on:true,ma_type:"EMA",ma_fast:"9",ma_slow:"21",macd_on:false,macd_fast:"12",macd_slow:"26",macd_signal:"9",macd_zero:false,vwap_on:false,vwap_days:"20",
+  rsi_on:false,rsi_len:"14",rsi_mode:"momentum",rsi_long:"55",rsi_short:"45",roc_on:false,roc_len:"10",roc_thr:"0",
+  sl_type:"pct",sl:0.5,tp_type:"pct",tp:1,opt_sl:30,opt_tp:60,intraday_only:true,no_entry_after:"15:00",max_bars:0,lots:1,capital:200000,cost:60,slip:0.5,expiry:"weekly",sweep:"none"};
+var FN=(()=>{let p=Object.assign({},FNO_DEF);try{Object.assign(p,JSON.parse(localStorage.getItem("fno-p")||"{}"));}catch(e){}return{p,res:null,busy:false,err:null,loaded:false};})();
+const FNO_STOCKS="RELIANCE HDFCBANK ICICIBANK INFY TCS SBIN AXISBANK KOTAKBANK LT ITC BHARTIARTL HINDUNILVR BAJFINANCE MARUTI SUNPHARMA TITAN M&M ULTRACEMCO NTPC POWERGRID ONGC COALINDIA TATASTEEL JSWSTEEL HCLTECH WIPRO TECHM ADANIENT ADANIPORTS BAJAJFINSV ASIANPAINT NESTLEIND DRREDDY CIPLA HINDALCO BPCL INDUSINDBK BANKBARODA PNB CANBK DLF VEDL TRENT BEL HAL ETERNAL".split(" ");
+async function loadFN(){let j=null;if(LOCAL)j=await getJSON("/api/fno/backtest");else if(GH){const r=await ghRaw("fno_backtest.json").catch(()=>null);j=r?{result:r}:null;}
+  FN.loaded=true;if(j){FN.busy=!!j.busy;FN.err=j.error||null;if(j.result)FN.res=j.result;if(FN.busy)setTimeout(loadFN,2500);}if(page()==="fno"&&!typing())render();}
+function fnoRead(f){const p=Object.assign({},FN.p);for(const k of Object.keys(FNO_DEF)){const el=f.elements[k];if(!el)continue;p[k]=el.type==="checkbox"?el.checked:el.value;}return p;}
+function fnoView(){if(!FN.loaded)loadFN();
+  const p=FN.p,R=FN.res,intra=p.timeframe!=="1d",opt=p.mode==="option",grid=p.sweep==="grid",idx=["NIFTY","BANKNIFTY"].includes(String(p.instrument).toUpperCase());
+  const inr=v=>v==null?"–":(v<0?"−":"")+"₹"+Math.abs(Math.round(v)).toLocaleString("en-IN"),f2=v=>v==null?"–":Number(v).toLocaleString("en-IN",{minimumFractionDigits:2,maximumFractionDigits:2});
+  const sel=(k,l,opts,re)=>`<label>${l}<select name="${k}"${re?' data-fnore="1"':""}>${opts.map(([v,t])=>`<option value="${v}" ${String(p[k])===String(v)?"selected":""}>${t}</option>`).join("")}</select></label>`;
+  const num=(k,l,st,txt)=>`<label>${l}<input name="${k}" ${txt||grid&&/_(fast|slow|signal|len)$/.test(k)?'inputmode="numeric"':`type="number" inputmode="decimal" step="${st||"any"}"`} value="${esc(String(p[k]??""))}"></label>`;
+  const on=(k,l)=>`<label class="row" style="gap:8px;align-items:center;font-weight:600;flex:0 0 100%"><input type="checkbox" name="${k}_on" data-fnore="1" ${p[k+"_on"]?"checked":""}> ${l}</label>`;
+  const box=(k,body)=>`<fieldset class="fnoInd" style="border:1px solid var(--line,rgba(255,255,255,.12));border-radius:10px;padding:8px 10px;margin:0;display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end${p[k+"_on"]||p.sweep==="combos"?"":";opacity:.6"}"><legend class="sr">${esc(k)}</legend>${body}</fieldset>`;
+  const listHint=grid?" (list values: 5,9,13)":"";
+  const hasRun=!!(R&&R.stats);
+  let h=`<section><h2>F&O backtest · build and test your own strategy</h2><p class="soft" style="margin:0">Pick the indicators you want (one or all five), set their values, choose how to enter and exit, and replay it on Nifty, Bank Nifty or an F&O stock. Signals are read when a candle closes and filled at the next candle's open, so the test never peeks ahead. The app only tests: it never places orders.</p></section>
+  <section class="card"><h2>Strategy builder</h2>
+   ${LOCAL?`<form id="fnoF" style="display:grid;gap:12px">
+    <div class="row" style="gap:10px;flex-wrap:wrap;align-items:flex-end">
+     <label>Instrument<input name="instrument" list="fnoList" value="${esc(p.instrument)}" data-fnore="1" autocomplete="off" spellcheck="false"></label><datalist id="fnoList"><option value="NIFTY"><option value="BANKNIFTY">${FNO_STOCKS.map(s=>`<option value="${s}">`).join("")}</datalist>
+     ${sel("mode","Trade as",[["future","Futures"],["option","Options buying (estimated premium)"]],1)}
+     ${sel("timeframe","Candle",[["5m","5 minutes"],["15m","15 minutes"],["1h","1 hour"],["1d","Daily"]],1)}
+     ${intra?num("days",`Days back (max ${p.timeframe==="1h"?729:59})`,1):sel("years","Period",[[1,"1 year"],[2,"2 years"],[3,"3 years"],[5,"5 years"],[10,"10 years"],[15,"15 years"]])}
+     ${num("lots","Lots",1)}<label>Lot size<input name="lot_size" type="number" step="1" value="${esc(String(p.lot_size||""))}" placeholder="${idx?(String(p.instrument).toUpperCase()==="NIFTY"?"65 (NSE)":"30 (NSE)"):"estimated if blank"}"></label>
+     ${num("capital","Capital (₹)",1000)}${num("cost","Charges per lot, round trip (₹)",5)}${num("slip",opt?"Slippage per side (premium ₹)":"Slippage per side (points)",0.1)}</div>
+    <div class="row" style="gap:10px;flex-wrap:wrap;align-items:flex-end">
+     ${sel("direction","Trades",[["both","Long and short"],["long","Long only"],["short","Short only"]])}
+     ${sel("combine","Enter when",[["all","ALL ticked indicators agree"],["majority","MOST ticked indicators agree"],["any","ANY ticked indicator signals"]])}
+     ${sel("entry","Entry timing",[["fresh","Only when the signal first turns on"],["every","Whenever the signal is on and I'm flat"]])}
+     ${sel("exit_on","Exit on signal",[["flip","When the entry condition stops being true"],["opposite","Only when the opposite signal appears"],["none","No signal exit (stop/target/time only)"]])}</div>
+    <div style="display:grid;gap:8px">
+     ${box("ma",on("ma","MA crossover: long when the fast average is above the slow one")+sel("ma_type","Average",[["EMA","EMA"],["SMA","SMA"]])+num("ma_fast","Fast"+listHint,1,grid)+num("ma_slow","Slow"+listHint,1,grid))}
+     ${box("macd",on("macd","MACD: long when the MACD line is above its signal line")+num("macd_fast","Fast"+listHint,1,grid)+num("macd_slow","Slow"+listHint,1,grid)+num("macd_signal","Signal"+listHint,1,grid)+`<label class="row" style="gap:6px;align-items:center;font-weight:400;flex:none"><input type="checkbox" name="macd_zero" ${p.macd_zero?"checked":""}> and MACD above 0 for longs, below 0 for shorts</label>`)}
+     ${box("vwap",on("vwap","VWAP: long when price closes above VWAP")+(intra?`<p class="soft" style="margin:0;flex:1 1 100%">Resets at each day's open.${idx?` The index has no volume, so ${String(p.instrument).toUpperCase()==="NIFTY"?"NIFTYBEES":"BANKBEES"} volume is used.`:""}</p>`:num("vwap_days","Rolling VWAP over (days)",1)))}
+     ${box("rsi",on("rsi","RSI")+num("rsi_len","Length"+listHint,1,grid)+sel("rsi_mode","Use it as",[["momentum","Momentum: long above, short below"],["reversal","Reversal: long below (oversold), short above"]])+num("rsi_long",p.rsi_mode==="reversal"?"Long when RSI below":"Long when RSI above",1)+num("rsi_short",p.rsi_mode==="reversal"?"Short when RSI above":"Short when RSI below",1))}
+     ${box("roc",on("roc","ROC (rate of change, %)")+num("roc_len","Look back (candles)"+listHint,1,grid)+num("roc_thr","Long above +X%, short below −X%",0.05))}
+    </div>
+    <div class="row" style="gap:10px;flex-wrap:wrap;align-items:flex-end">
+     ${opt?num("opt_sl","Stop: premium falls by (%)",5)+num("opt_tp","Target: premium rises by (%)",5)+sel("expiry","Expiry",idx&&String(p.instrument).toUpperCase()==="NIFTY"?[["weekly","Weekly (Tuesday)"],["monthly","Monthly (last Tuesday)"]]:[["monthly","Monthly (last Tuesday)"]])
+       :sel("sl_type","Stop loss",[["pct","% of price"],["pts","Points"],["atr","× ATR(14)"],["none","None"]])+num("sl","Stop value",0.05)+sel("tp_type","Target",[["pct","% of price"],["pts","Points"],["atr","× ATR(14)"],["none","None"]])+num("tp","Target value",0.05)}
+     ${num("max_bars","Exit after N candles (0 = off)",1)}
+     ${intra?`<label class="row" style="gap:6px;align-items:center;font-weight:400;flex:none"><input type="checkbox" name="intraday_only" ${p.intraday_only?"checked":""}> Intraday only: square off at the last candle (from 15:15)</label><label>No new trades from<input name="no_entry_after" type="time" value="${esc(p.no_entry_after||"15:00")}"></label>`:""}</div>
+    <div class="row" style="gap:10px;flex-wrap:wrap;align-items:flex-end">
+     ${sel("sweep","What to run",[["none","Just this setup"],["combos","Every indicator combination (31 runs, using the values above)"],["grid","Every value I list, e.g. MA fast 5,9,13 × slow 21,50 (up to 120 runs)"]],1)}
+     <button class="primary" ${FN.busy?"disabled":""}>${FN.busy?"Backtesting…":"▶ Run backtest"}</button><button type="button" data-fnoreset="1">Reset</button></div>
+   </form>`:`<p class="soft">Run backtests in the Windows app (it downloads the prices); the latest result shows here.</p>`}
+   ${FN.err?`<p class="note bad">${esc(FN.err)}</p>`:""}${FN.busy?`<p class="note" role="status">Downloading prices and testing… usually under a minute.</p>`:""}</section>`;
+  if(!hasRun)return h+fnoHelp();
+  const S=R.stats,P=R.params||{};
+  if(!S.trades)return h+`<section class="card"><h2>Result · ${esc(R.instrument)} ${esc(R.timeframe)}</h2><p>No trades for <strong>${esc(R.setup)}</strong> from ${esc(R.from)} to ${esc(R.to)}. Loosen a condition (for example "ANY indicator", or wider RSI levels) and run again.</p>${(R.warnings||[]).map(w=>`<p class="note">${esc(w)}</p>`).join("")}</section>`+fnoHelp();
+  const good=S.net>0,pf=S.profit_factor;
+  const half=(n,x)=>x&&x.trades?`<div class="tile"><div class="k">${n}</div><div class="v ${x.net>=0?"pos":"neg"}">${inr(x.net)}</div><div class="soft" style="font-size:12px">${x.trades} trades · ${x.win_rate}% win · PF ${x.profit_factor??"–"}</div></div>`:"";
+  h+=`<section class="card"><h2>Result · ${esc(R.instrument)} ${R.mode==="option"?"options (estimated)":"futures"} · ${esc(R.timeframe)} · ${esc(R.from)} to ${esc(R.to)}</h2>
+   <p class="soft" style="margin:0 0 8px"><strong>${esc(R.setup)}</strong> · ${P.direction==="both"?"long & short":P.direction+" only"} · enter when ${P.combine==="all"?"all agree":P.combine==="any"?"any signals":"most agree"} · ${R.lots} lot × ${R.lot} · ${R.bars.toLocaleString("en-IN")} candles · run ${esc((R.generated_at||"").replace("T"," ").slice(0,16))}</p>
+   <p class="note ${good&&pf>1.2?"good":good?"":"bad"}"><strong>${S.trades} trades, ${S.win_rate}% winners, net ${inr(S.net)} (${S.return_pct>0?"+":""}${S.return_pct}% on ${inr(R.capital)}).</strong> ${good?(pf>=1.5?"A solid edge in this period.":pf>=1.2?"A small edge in this period; costs and slippage matter a lot here.":"Barely positive: one change in costs or period could flip it."):"This setup lost money in this period."} ${R.mode!=="option"?`Holding ${R.lots} lot${R.lots>1?"s":""} the whole time would have made ${inr(R.buy_hold_pnl)}.`:""}</p>
+   <div class="tiles">${tile("Net P&L",inr(S.net),good?"g":"r")}${tile("Win rate",S.win_rate+"%")}${tile("Profit factor",pf??"–",pf>1?"g":"r")}${tile("Avg win / loss",`${inr(S.avg_win)} / ${inr(S.avg_loss)}`)}${tile("Per trade",inr(S.expectancy),S.expectancy>0?"g":"r")}${tile("Worst dip",`${inr(-S.max_dd)}${S.max_dd_pct!=null?` (${S.max_dd_pct}%)`:""}`,"r")}${tile("Losing run",S.worst_streak+" trades")}${tile(R.mode==="option"?"Premium points":"Points",(S.points>0?"+":"")+S.points)}${tile("Long / short",`${S.longs} / ${S.shorts}`)}${tile("Avg candles held",S.avg_bars)}</div>
+   ${eqSvg(R.curve)}<p class="soft" style="font-size:13px;margin:4px 0 0">Line = running profit in ₹ after charges. Exits: ${Object.entries(S.exits||{}).map(([k,v])=>`${esc(k)} ${v}`).join(" · ")}.</p>
+   ${R.first70||R.last30?`<h3 style="margin:12px 0 4px">Does it hold up? First 70% of trades vs the last 30%</h3><div class="tiles">${half("First 70%",R.first70)}${half("Last 30% (most recent)",R.last30)}</div><p class="soft" style="font-size:13px;margin:4px 0 0">If the recent part is much worse, the edge may be fading or the values are fitted to the past.</p>`:""}
+   ${(R.warnings||[]).map(w=>`<p class="note" style="margin-top:8px">${esc(w)}</p>`).join("")}</section>`;
+  if((R.sweep||[]).length){h+=`<section class="card"><h2>${R.sweep_mode==="combos"?"Every indicator combination":"Every value combination"} (${R.runs} runs, best first)</h2><p class="soft" style="margin:0 0 8px">Ranked by net profit among runs with at least 5 trades. Press <strong>Use</strong> to load a row into the builder.</p>
+   <div class="scroll"><table><thead><tr><th>Setup</th><th class="r">Trades</th><th class="r">Win rate</th><th class="r">Net</th><th class="r">Profit factor</th><th class="r">Worst dip</th><th class="r">Per trade</th><th><span class="sr">Use</span></th></tr></thead><tbody>
+   ${R.sweep.map((r,i)=>`<tr><td>${esc(r.label)}</td><td class="r">${r.trades||0}</td><td class="r">${r.win_rate??"–"}${r.win_rate!=null?"%":""}</td><td class="r ${r.net>0?"pos":"neg"}">${inr(r.net)}</td><td class="r">${r.profit_factor??"–"}</td><td class="r neg">${r.max_dd!=null?inr(-r.max_dd):"–"}</td><td class="r">${inr(r.expectancy)}</td><td>${LOCAL?`<button type="button" data-fnouse="${i}" aria-label="Use ${esc(r.label)}">Use</button>`:""}</td></tr>`).join("")}</tbody></table></div></section>`;}
+  const grp=(t,rows,k)=>`<h3 style="margin:12px 0 4px">${t}</h3><div class="scroll"><table><thead><tr><th>${k}</th><th class="r">Trades</th><th class="r">Win rate</th><th class="r">P&L</th></tr></thead><tbody>${rows.map(y=>`<tr><td>${esc(y.period)}</td><td class="r">${y.trades}</td><td class="r">${y.win_rate}%</td><td class="r ${y.pnl>=0?"pos":"neg"}">${inr(y.pnl)}</td></tr>`).join("")}</tbody></table></div>`;
+  h+=`<section class="card"><h2>Breakdown</h2>${grp("By year",R.years||[],"Year")}
+   <details style="margin-top:8px"><summary>By month (${(R.months||[]).length})</summary>${grp("",(R.months||[]).slice().reverse(),"Month")}</details>
+   ${(R.hours||[]).length?`<details style="margin-top:8px"><summary>By entry hour (${R.hours.length})</summary>${grp("",R.hours,"Hour")}</details>`:""}</section>`;
+  const T=R.trades||[];
+  h+=`<section class="card"><h2>Trades (${R.all_trades}${R.all_trades>T.length?`, latest ${T.length}`:""})</h2><div class="scroll"><table><thead><tr><th>Side</th><th>Entry</th><th class="r">Entry</th><th>Exit</th><th class="r">Exit</th>${R.mode==="option"?`<th>Option</th><th class="r">Premium in → out</th>`:""}<th class="r">Points</th><th class="r">Candles</th><th>Why</th><th class="r">P&L</th></tr></thead><tbody>
+   ${T.map(t=>`<tr><td class="${t.side==="LONG"?"pos":"neg"}">${t.side==="LONG"?"Long":"Short"}</td><td>${esc(t.entry_time)}</td><td class="r">${f2(t.entry)}</td><td>${esc(t.exit_time)}</td><td class="r">${f2(t.exit)}</td>${R.mode==="option"?`<td>${esc(t.option)} <span class="soft">${esc(t.expiry)}</span></td><td class="r">${f2(t.prem_in)} → ${f2(t.prem_out)}</td>`:""}<td class="r ${t.points>0?"pos":"neg"}">${t.points>0?"+":""}${t.points}</td><td class="r">${t.bars}</td><td>${esc(t.why)}</td><td class="r ${t.pnl>=0?"pos":"neg"}">${inr(t.pnl)}</td></tr>`).join("")}</tbody></table></div></section>`;
+  return h+fnoHelp();}
+function fnoHelp(){return `<section class="card"><h2>How the test works (read before trusting a result)</h2><ul style="margin:0 0 0 18px;line-height:1.6">
+  <li><strong>MA cross</strong> (SMA or EMA, any lengths) and <strong>MACD</strong> (fast, slow, signal) are both "MAC" options; tick one or both.</li>
+  <li><strong>VWAP</strong> resets at each day's open on intraday candles; on daily candles it is a rolling VWAP over the days you set.</li>
+  <li><strong>RSI</strong> can be used for momentum (buy strength above 55) or reversal (buy oversold below 30). <strong>ROC</strong> = % change over N candles.</li>
+  <li>A signal is read at a candle's close and the trade is filled at the next open plus slippage; stop and target are checked on each candle's high/low (stop first if both are touched in the same candle).</li>
+  <li><strong>Futures</strong> are tested on the spot index or stock price (no futures basis or rollover cost). Lot sizes: Nifty 65, Bank Nifty 30 (current NSE sizes, used for the whole period). Stock lot sizes are estimated unless you type yours.</li>
+  <li><strong>Options buying</strong>: long signal = buy the ATM call, short signal = buy the ATM put. Premiums are <em>estimated</em> with Black-Scholes using India VIX (indices) or recent volatility (stocks); time decay is included, but real premiums, IV moves and spreads differ. Nifty weekly expiry is Tuesday (Thursday before September 2025); a trade never opens in an option expiring the same day.</li>
+  <li>Yahoo keeps 5- and 15-minute candles for about 60 days and 1-hour candles for about 2 years, so short timeframes have little history: treat them as a first look, not proof.</li>
+  <li>Running many combinations and picking the best always flatters the result. Prefer setups that are positive in both the first 70% and the last 30%.</li></ul></section>`;}
 const VIEWS={
 absorb(){return absView();},
+fno(){return fnoView();},
 gold(){
   const G=GOLD;
   if(!G||!G.tech)return `<section class="card"><h2>Gold · XAU/USD</h2><p>${LOCAL?"Fetching gold prices for the first time. This takes about 30 seconds.":"Gold data appears after your laptop sends it (the app refreshes gold every 15 minutes while it is open)."}</p>${LOCAL?'<button type="button" data-goldrun="1">↻ Fetch gold now</button>':""}</section>`;
@@ -1512,6 +1596,7 @@ main.addEventListener("change",e=>{const y=e.target.closest&&e.target.closest("[
 function absInput(e){const el=e.target.closest&&e.target.closest("[data-absk]");if(!el)return;const k=el.dataset.absk;ABS[k]=el.type==="checkbox"?el.checked:el.value;saveAbs();
   if(e.type==="change"||el.type==="checkbox"||el.tagName==="SELECT"){const id=el.dataset.absk,st=el.selectionStart;render();const again=main.querySelector(`[data-absk="${id}"]`);if(again){again.focus();try{if(st!=null&&again.setSelectionRange)again.setSelectionRange(st,st);}catch(er){}}}}
 main.addEventListener("change",absInput);
+main.addEventListener("change",e=>{const el=e.target.closest&&e.target.closest("[data-fnore]");if(!el||!el.form)return;FN.p=fnoRead(el.form);try{localStorage.setItem("fno-p",JSON.stringify(FN.p));}catch(er){}const nm=el.name;render();const a=document.querySelector(`#fnoF [name="${nm}"]`);if(a)a.focus();});
 main.addEventListener("change",e=>{const sel=e.target.closest&&e.target.closest("[data-grstrat]");if(!sel)return;const f=sel.form;for(const k of Object.keys(GR.params)){const el=f.elements[k];if(el)GR.params[k]=el.type==="checkbox"?el.checked:el.value;}GR.params.strategy=sel.value;render();const a=document.querySelector("[data-grstrat]");if(a)a.focus();});$("#fsDlg").addEventListener("change",onRange);
 $("#fsX").addEventListener("click",closeFs);
 $("#fsDlg").addEventListener("close",()=>{$("#fsBody").innerHTML="";if(FS){const b=main.querySelector(`[data-fs="${FS.sym}|${FS.slot}"]`);if(b)b.focus();FS=null;}});
@@ -1519,6 +1604,8 @@ window.addEventListener("resize",()=>{if(FS&&$("#fsDlg").open){const r=chartSubj
 main.addEventListener("submit",e=>{
   e.preventDefault(); const f=e.target;
   if(f.id==="anaF"){runAnalyze($("#anaQ").value);return;}
+  if(f.id==="fnoF"){const p=fnoRead(f);FN.p=p;try{localStorage.setItem("fno-p",JSON.stringify(p));}catch(er){}FN.busy=true;FN.err=null;render();
+    fetch("/api/fno/backtest",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(p)}).then(()=>setTimeout(loadFN,2000)).catch(er=>{FN.busy=false;FN.err=String(er);render();});return;}
   if(f.id==="absRpF"){const p=Object.assign({},AR.p);for(const k of Object.keys(AR.p)){const el=f.elements[k];if(!el)continue;p[k]=el.type==="checkbox"?el.checked:el.value;}
     AR.p=p;try{localStorage.setItem("abs-rp",JSON.stringify(p));}catch(er){}AR.busy=true;AR.err=null;render();
     fetch("/api/absorption/replay",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(p)}).then(()=>setTimeout(loadAR,2500)).catch(er=>{AR.busy=false;AR.err=String(er);render();});return;}
@@ -1566,6 +1653,8 @@ main.addEventListener("click",async e=>{
   if(t.closest&&t.closest("[data-giapply]")){giApply();return;}
   if(t.closest&&t.closest("[data-giclear]")){GI.data=null;GI.rows=[];GI.err=null;render();return;}
   if(t.closest&&t.closest("[data-giundo]")){try{const b=localStorage.getItem("book-before-groww");if(b){B=JSON.parse(b);localStorage.removeItem("book-before-groww");persist();GI.done="Last Groww import undone.";render();}}catch(e){}return;}
+  const fr=t.closest&&t.closest("[data-fnoreset]");if(fr){try{localStorage.removeItem("fno-p");}catch(er){}FN.p=Object.assign({},FNO_DEF);render();return;}
+  const fu=t.closest&&t.closest("[data-fnouse]");if(fu&&FN.res&&FN.res.sweep){const r=FN.res.sweep[+fu.dataset.fnouse];if(r){Object.assign(FN.p,r.params,{sweep:"none"});for(const k of ["ma_fast","ma_slow","macd_fast","macd_slow","macd_signal","rsi_len","roc_len","vwap_days","rsi_long","rsi_short","roc_thr"])if(FN.p[k]!=null)FN.p[k]=String(FN.p[k]);try{localStorage.setItem("fno-p",JSON.stringify(FN.p));}catch(er){}render();const a=document.querySelector("#fnoF [name=instrument]");if(a){a.scrollIntoView({block:"center"});a.focus();}}return;}
   const arr=t.closest&&t.closest("[data-arreset]");if(arr){try{localStorage.removeItem("abs-rp");}catch(er){}Object.assign(AR.p,{years:"",symbols:"",sector:"",risk_pct:2,max_open:5,vol_mult:1.8,wick_min:0.4,close_pos:0.6,max_touches:2,impulse_atr:2,rr:2,max_days:20,max_risk_atr:2.5,stop_pad_atr:0.1,cost_pct:0.15,need_zone:true,need_sweep:false,block_supply:false});render();return;}
   const al=t.closest&&t.closest("[data-abslog]");if(al){const R=ckResult(),c=ABS;if(R.ok&&R.plan){AJ.push({id:Date.now(),t:new Date().toLocaleString("en-IN",{dateStyle:"short",timeStyle:"short"}),inst:c.inst,dir:c.dir,size:+c.size,liq:!!c.liq,entry:+c.open,stop:R.plan.stop,tgt:R.plan.tgt,res:null});saveAbs();render();}return;}
   const ajr=t.closest&&t.closest("[data-ajres]");if(ajr){const j=AJ.find(x=>String(x.id)===ajr.dataset.aj);if(j){j.res=ajr.dataset.ajres;saveAbs();render();}return;}
