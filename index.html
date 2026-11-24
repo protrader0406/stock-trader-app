@@ -54,7 +54,7 @@ nav a[aria-current="page"]{color:var(--accent-ink);background:linear-gradient(90
 .foldbar{display:flex;gap:6px;flex-wrap:wrap;margin:0 0 10px}
 .sortbtn{all:unset;cursor:pointer;font:inherit;font-weight:600;white-space:nowrap}.sortbtn:focus-visible{outline:2px solid var(--blue);outline-offset:2px;border-radius:4px}
 td input[type=checkbox]{width:20px;height:20px;min-height:0;margin:0}
-fieldset input[type=checkbox]{width:20px;height:20px;min-height:0;margin:0;flex:none}#absCk label,#absRpF label{flex:1 1 170px}#absRpF fieldset label{flex:none}#fnoF label{flex:1 1 150px}#fnoF label.row{flex-direction:row!important;justify-content:flex-start;text-align:left;align-items:center}#fnoF input[type=checkbox]{width:20px;height:20px;min-height:0;margin:0;flex:none}#fnoF fieldset.fnoInd>label.row{flex:0 0 100%}
+fieldset input[type=checkbox]{width:20px;height:20px;min-height:0;margin:0;flex:none}#absCk label,#absRpF label{flex:1 1 170px}#absRpF fieldset label{flex:none}#fnoF label,#macF label{flex:1 1 150px}#macF label.row{flex-direction:row!important;justify-content:flex-start;text-align:left;align-items:center}#macF input[type=checkbox]{width:20px;height:20px;min-height:0;margin:0;flex:none}#fnoF label.row{flex-direction:row!important;justify-content:flex-start;text-align:left;align-items:center}#fnoF input[type=checkbox]{width:20px;height:20px;min-height:0;margin:0;flex:none}#fnoF fieldset.fnoInd>label.row{flex:0 0 100%}
 #goldRpF input[type=checkbox]{width:20px;height:20px;min-height:0;margin:0;flex:none}#goldRpF label{flex:1 1 150px}#goldRpF fieldset label{flex:none}
 .chartbar{display:flex;gap:6px;align-items:center;margin:0 0 4px}.chartbar .rangesel{flex:1;margin:0}.fsbtn{flex:none;min-width:38px;min-height:34px;padding:0 8px;font-size:17px;line-height:1}
 #fsDlg{width:100vw;max-width:100vw;height:100vh;max-height:100vh;margin:0;padding:14px 18px;border:0;background:var(--bg,#0b1220);color:inherit}#fsDlg::backdrop{background:rgba(0,0,0,.7)}#fsDlg .fsh{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:8px}#fsDlg .chart svg{max-height:calc(100vh - 190px)}
@@ -1114,7 +1114,53 @@ const FNO_STOCKS="RELIANCE HDFCBANK ICICIBANK INFY TCS SBIN AXISBANK KOTAKBANK L
 async function loadFN(){let j=null;if(LOCAL)j=await getJSON("/api/fno/backtest");else if(GH){const r=await ghRaw("fno_backtest.json").catch(()=>null);j=r?{result:r}:null;}
   FN.loaded=true;if(j){FN.busy=!!j.busy;FN.err=j.error||null;if(j.result)FN.res=j.result;if(FN.busy)setTimeout(loadFN,2500);}if(page()==="fno"&&!typing())render();}
 function fnoRead(f){const p=Object.assign({},FN.p);for(const k of Object.keys(FNO_DEF)){const el=f.elements[k];if(!el)continue;p[k]=el.type==="checkbox"?el.checked:el.value;}return p;}
-function fnoView(){if(!FN.loaded)loadFN();
+// ---------------- MAC + ROC + RSI option strategy (its own backtest)
+const MAC_DEF={instrument:"NIFTY",timeframe:"5m",days:59,chan_type:"SMA",chan_upper:"9",chan_lower:"9",rsi_len:"14",rsi_level:"50",roc_len:"13",
+  delta_lo:0.6,delta_hi:0.7,tp_pts:40,sl_pts:15,direction:"both",entry:"fresh",intraday_only:true,no_entry_after:"15:00",expiry:"weekly",
+  lots:1,sizing:"fixed",per_lot:20000,capital:200000,cost:60,slip:0.5};
+var MS=(()=>{let p=Object.assign({},MAC_DEF);try{Object.assign(p,JSON.parse(localStorage.getItem("mac-p")||"{}"));}catch(e){}return{p,res:null,busy:false,err:null,loaded:false};})();
+var FNO_SUB=(()=>{try{return localStorage.getItem("fno-sub")||"mac";}catch(e){return "mac";}})();
+async function loadMS(){let j=null;if(LOCAL)j=await getJSON("/api/fno/mac");else if(GH){const r=await ghRaw("fno_mac.json").catch(()=>null);j=r?{result:r}:null;}
+  MS.loaded=true;if(j){MS.busy=!!j.busy;MS.err=j.error||null;if(j.result)MS.res=j.result;if(MS.busy)setTimeout(loadMS,2500);}if(page()==="fno"&&!typing())render();}
+function macRead(f){const p=Object.assign({},MS.p);for(const k of Object.keys(MAC_DEF)){const el=f.elements[k];if(!el)continue;p[k]=el.type==="checkbox"?el.checked:el.value;}return p;}
+function fnoTabs(){return `<div class="row" role="group" aria-label="F&O section" style="gap:8px;flex-wrap:wrap;margin:0 0 4px">${[["mac","MAC + ROC + RSI strategy"],["builder","Strategy builder (any indicators)"]].map(([k,t])=>`<button type="button" data-fnosub="${k}" aria-pressed="${FNO_SUB===k}" class="${FNO_SUB===k?"primary":""}">${t}</button>`).join("")}</div>`;}
+function macView(){if(!MS.loaded)loadMS();
+  const p=MS.p,R=MS.res,nifty=String(p.instrument).toUpperCase()==="NIFTY";
+  const sel=(k,l,opts,re)=>`<label>${l}<select name="${k}"${re?' data-macre="1"':""}>${opts.map(([v,t])=>`<option value="${v}" ${String(p[k])===String(v)?"selected":""}>${t}</option>`).join("")}</select></label>`;
+  const num=(k,l,st)=>`<label>${l}<input name="${k}" type="number" inputmode="decimal" step="${st||"any"}" value="${esc(String(p[k]??""))}"></label>`;
+  const lvl=esc(String(p.rsi_level)),up=esc(String(p.chan_upper)),lo=esc(String(p.chan_lower));
+  let h=`<section class="card"><h2>MAC + ROC + RSI option strategy</h2>
+   <div class="tiles" style="grid-template-columns:repeat(auto-fit,minmax(260px,1fr))">
+    <div class="tile" style="border-top-color:var(--good,#34d399)"><div class="k">Buy CE when the candle closes with</div><div style="line-height:1.7;margin-top:4px">• close <strong>above</strong> the MAC channel (${esc(p.chan_type)} ${up} of highs)<br>• ROC(${esc(String(p.roc_len))}) <strong>positive</strong><br>• RSI(${esc(String(p.rsi_len))}) <strong>above ${lvl}</strong></div></div>
+    <div class="tile" style="border-top-color:var(--bad,#f87171)"><div class="k">Buy PE when the candle closes with</div><div style="line-height:1.7;margin-top:4px">• close <strong>below</strong> the MAC channel (${esc(p.chan_type)} ${lo} of lows)<br>• ROC(${esc(String(p.roc_len))}) <strong>negative</strong><br>• RSI(${esc(String(p.rsi_len))}) <strong>below ${lvl}</strong></div></div>
+    <div class="tile"><div class="k">Strike and exit</div><div style="line-height:1.7;margin-top:4px">• strike with delta ${esc(String(p.delta_lo))}–${esc(String(p.delta_hi))} (in the money)<br>• target: entry premium <strong>+${esc(String(p.tp_pts))}</strong><br>• stop: entry premium <strong>−${esc(String(p.sl_pts))}</strong><br><span class="soft">e.g. bought at 230 → exit at ${230+(+p.tp_pts||0)} or ${230-(+p.sl_pts||0)}</span></div></div></div>
+   ${LOCAL?`<form id="macF" style="display:grid;gap:12px;margin-top:12px">
+    <div class="row" style="gap:10px;flex-wrap:wrap;align-items:flex-end">
+     ${sel("instrument","Index",[["NIFTY","Nifty 50"],["BANKNIFTY","Bank Nifty"]],1)}
+     ${sel("timeframe","Candle",[["5m","5 minutes"],["15m","15 minutes"],["30m","30 minutes"],["1h","1 hour"]],1)}
+     ${num("days",`Days back (max ${p.timeframe==="1h"?729:59})`,1)}
+     ${sel("expiry","Expiry",nifty?[["weekly","Weekly (Tuesday)"],["monthly","Monthly (last Tuesday)"]]:[["monthly","Monthly (last Tuesday)"]])}
+     ${sel("direction","Trades",[["both","CE and PE"],["long","CE only"],["short","PE only"]])}
+     ${sel("entry","Entry",[["fresh","Only when the conditions first line up"],["every","Again after an exit while conditions still hold"]])}</div>
+    <div class="row" style="gap:10px;flex-wrap:wrap;align-items:flex-end">
+     ${sel("chan_type","MAC average",[["SMA","SMA"],["EMA","EMA"]])}${num("chan_upper","MAC upper length",1)}${num("chan_lower","MAC lower length",1)}
+     ${num("roc_len","ROC length",1)}${num("rsi_len","RSI length",1)}${num("rsi_level","RSI level (CE above, PE below)",1)}</div>
+    <div class="row" style="gap:10px;flex-wrap:wrap;align-items:flex-end">
+     ${num("delta_lo","Delta from",0.05)}${num("delta_hi","Delta to",0.05)}${num("tp_pts","Target: premium + (points)",1)}${num("sl_pts","Stop: premium − (points)",1)}
+     <label class="row" style="gap:6px;align-items:center;font-weight:400;flex:none"><input type="checkbox" name="intraday_only" ${p.intraday_only?"checked":""}> Square off at the last candle (from 15:15)</label>
+     <label>No new trades from<input name="no_entry_after" type="time" value="${esc(p.no_entry_after||"15:00")}"></label></div>
+    <div class="row" style="gap:10px;flex-wrap:wrap;align-items:flex-end">
+     ${sel("sizing","Lot sizing",[["fixed","Fixed lots"],["capital","1 lot per ₹X balance"]],1)}${p.sizing==="capital"?num("per_lot","₹ per lot (e.g. 20000)",1000):num("lots","Lots",1)}
+     <label>Lot size<input value="${nifty?"65":"30"} (NSE)" disabled></label>
+     ${num("capital","Capital (₹)",1000)}${num("cost","Charges per lot, round trip (₹)",5)}${num("slip","Slippage per side (premium ₹)",0.1)}</div>
+    <div class="row" style="gap:10px;flex-wrap:wrap;align-items:flex-end"><button class="primary" ${MS.busy?"disabled":""}>${MS.busy?"Backtesting…":"▶ Run backtest"}</button><button type="button" data-macreset="1">Reset to the rules above</button></div>
+   </form>`:`<p class="soft">Run the backtest in the Windows app; the latest result shows here.</p>`}
+   ${MS.err?`<p class="note bad">${esc(MS.err)}</p>`:""}${MS.busy?`<p class="note" role="status">Downloading prices and testing… usually under a minute.</p>`:""}
+   <p class="soft" style="font-size:13px;margin:10px 0 0">MAC channel = moving average of the candle highs (upper line) and of the lows (lower line). The signal is checked when a candle closes; the option is bought at the next candle's open. Premiums, delta and the strike are <strong>estimated</strong> with Black-Scholes and India VIX, so the ±${esc(String(p.tp_pts))}/${esc(String(p.sl_pts))} point exits are only as good as that estimate. Yahoo keeps about 60 days of 5–30 minute candles.</p></section>`;
+  if(R&&R.stats)h+=fnoResult(R,"MAC strategy · ");
+  return h;}
+function fnoIntro(){return `<section><h2>F&O backtest</h2><p class="soft" style="margin:0 0 10px">Test option and futures strategies on Nifty, Bank Nifty and F&O stocks. Signals are read when a candle closes and filled at the next candle's open, so the test never peeks ahead. The app only tests: it never places orders.</p>${fnoTabs()}</section>`;}
+function fnoView(){if(FNO_SUB==="mac")return fnoIntro()+macView()+fnoHelp();if(!FN.loaded)loadFN();
   const p=FN.p,R=FN.res,intra=p.timeframe!=="1d",opt=p.mode==="option",grid=p.sweep==="grid",idx=["NIFTY","BANKNIFTY"].includes(String(p.instrument).toUpperCase());
   const inr=v=>v==null?"–":(v<0?"−":"")+"₹"+Math.abs(Math.round(v)).toLocaleString("en-IN"),f2=v=>v==null?"–":Number(v).toLocaleString("en-IN",{minimumFractionDigits:2,maximumFractionDigits:2});
   const sel=(k,l,opts,re)=>`<label>${l}<select name="${k}"${re?' data-fnore="1"':""}>${opts.map(([v,t])=>`<option value="${v}" ${String(p[k])===String(v)?"selected":""}>${t}</option>`).join("")}</select></label>`;
@@ -1123,7 +1169,7 @@ function fnoView(){if(!FN.loaded)loadFN();
   const box=(k,body)=>`<fieldset class="fnoInd" style="border:1px solid var(--line,rgba(255,255,255,.12));border-radius:10px;padding:8px 10px;margin:0;display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end${p[k+"_on"]||p.sweep==="combos"?"":";opacity:.6"}"><legend class="sr">${esc(k)}</legend>${body}</fieldset>`;
   const listHint=grid?" (list values: 5,9,13)":"";
   const hasRun=!!(R&&R.stats);
-  let h=`<section><h2>F&O backtest · build and test your own strategy</h2><p class="soft" style="margin:0">Pick the indicators you want (one or all five), set their values, choose how to enter and exit, and replay it on Nifty, Bank Nifty or an F&O stock. Signals are read when a candle closes and filled at the next candle's open, so the test never peeks ahead. The app only tests: it never places orders.</p></section>
+  let h=`<section><h2>F&O backtest · build and test your own strategy</h2><p class="soft" style="margin:0">Pick the indicators you want (one or all five), set their values, choose how to enter and exit, and replay it on Nifty, Bank Nifty or an F&O stock. Signals are read when a candle closes and filled at the next candle's open, so the test never peeks ahead. The app only tests: it never places orders.</p>${fnoTabs()}</section>
   <section class="card"><h2>Strategy builder</h2>
    ${LOCAL?`<form id="fnoF" style="display:grid;gap:12px">
     <div class="row" style="gap:10px;flex-wrap:wrap;align-items:flex-end">
@@ -1156,11 +1202,14 @@ function fnoView(){if(!FN.loaded)loadFN();
    </form>`:`<p class="soft">Run backtests in the Windows app (it downloads the prices); the latest result shows here.</p>`}
    ${FN.err?`<p class="note bad">${esc(FN.err)}</p>`:""}${FN.busy?`<p class="note" role="status">Downloading prices and testing… usually under a minute.</p>`:""}</section>`;
   if(!hasRun)return h+fnoHelp();
+  return h+fnoResult(R)+fnoHelp();}
+function fnoResult(R,ttl){let h="";
+  const inr=v=>v==null?"–":(v<0?"−":"")+"₹"+Math.abs(Math.round(v)).toLocaleString("en-IN"),f2=v=>v==null?"–":Number(v).toLocaleString("en-IN",{minimumFractionDigits:2,maximumFractionDigits:2});
   const S=R.stats,P=R.params||{};
-  if(!S.trades)return h+`<section class="card"><h2>Result · ${esc(R.instrument)} ${esc(R.timeframe)}</h2><p>No trades for <strong>${esc(R.setup)}</strong> from ${esc(R.from)} to ${esc(R.to)}. Loosen a condition (for example "ANY indicator", or wider RSI levels) and run again.</p>${(R.warnings||[]).map(w=>`<p class="note">${esc(w)}</p>`).join("")}</section>`+fnoHelp();
+  if(!S.trades)return h+`<section class="card"><h2>${ttl||""}Result · ${esc(R.instrument)} ${esc(R.timeframe)}</h2><p>No trades for <strong>${esc(R.setup)}</strong> from ${esc(R.from)} to ${esc(R.to)}. Loosen a condition (for example "ANY indicator", or wider RSI levels) and run again.</p>${(R.warnings||[]).map(w=>`<p class="note">${esc(w)}</p>`).join("")}</section>`;
   const good=S.net>0,pf=S.profit_factor;
   const half=(n,x)=>x&&x.trades?`<div class="tile"><div class="k">${n}</div><div class="v ${x.net>=0?"pos":"neg"}">${inr(x.net)}</div><div class="soft" style="font-size:12px">${x.trades} trades · ${x.win_rate}% win · PF ${x.profit_factor??"–"}</div></div>`:"";
-  h+=`<section class="card"><h2>Result · ${esc(R.instrument)} ${R.mode==="option"?"options (estimated)":"futures"} · ${esc(R.timeframe)} · ${esc(R.from)} to ${esc(R.to)}</h2>
+  h+=`<section class="card"><h2>${ttl||""}Result · ${esc(R.instrument)} ${R.mode==="option"?"options (estimated)":"futures"} · ${esc(R.timeframe)} · ${esc(R.from)} to ${esc(R.to)}</h2>
    <p class="soft" style="margin:0 0 8px"><strong>${esc(R.setup)}</strong> · ${P.direction==="both"?"long & short":P.direction+" only"} · enter when ${P.combine==="all"?"all agree":P.combine==="any"?"any signals":"most agree"} · ${R.sizing==="capital"?`1 lot per ${inr(R.per_lot)} of balance (×${R.lot}), up to ${S.max_lots} lot${S.max_lots>1?"s":""}`:`${R.lots} lot × ${R.lot}`} · ${R.bars.toLocaleString("en-IN")} candles · run ${esc((R.generated_at||"").replace("T"," ").slice(0,16))}</p>
    <p class="note ${good&&pf>1.2?"good":good?"":"bad"}"><strong>${S.trades} trades, ${S.win_rate}% winners, net ${inr(S.net)} (${S.return_pct>0?"+":""}${S.return_pct}% on ${inr(R.capital)}).</strong> ${good?(pf>=1.5?"A solid edge in this period.":pf>=1.2?"A small edge in this period; costs and slippage matter a lot here.":"Barely positive: one change in costs or period could flip it."):"This setup lost money in this period."} ${R.mode!=="option"?`Holding ${R.lots} lot${R.lots>1?"s":""} the whole time would have made ${inr(R.buy_hold_pnl)}.`:""}</p>
    <div class="tiles">${tile("Net P&L",inr(S.net),good?"g":"r")}${tile("Final balance",inr(S.final_balance),good?"g":"r")}${tile("Win rate",S.win_rate+"%")}${tile("Profit factor",pf??"–",pf>1?"g":"r")}${tile("Avg win / loss",`${inr(S.avg_win)} / ${inr(S.avg_loss)}`)}${tile("Per trade",inr(S.expectancy),S.expectancy>0?"g":"r")}${tile("Worst dip",`${inr(-S.max_dd)}${S.max_dd_pct!=null?` (${S.max_dd_pct}%)`:""}`,"r")}${tile("Losing run",S.worst_streak+" trades")}${tile(R.mode==="option"?"Premium points":"Points",(S.points>0?"+":"")+S.points)}${tile("Long / short",`${S.longs} / ${S.shorts}`)}${tile("Avg candles held",S.avg_bars)}</div>
@@ -1176,8 +1225,8 @@ function fnoView(){if(!FN.loaded)loadFN();
    ${(R.hours||[]).length?`<details style="margin-top:8px"><summary>By entry hour (${R.hours.length})</summary>${grp("",R.hours,"Hour")}</details>`:""}</section>`;
   const T=R.trades||[];
   h+=`<section class="card"><h2>Trades (${R.all_trades}${R.all_trades>T.length?`, latest ${T.length}`:""})</h2><div class="scroll"><table><thead><tr><th>Side</th><th>Entry</th><th class="r">Entry</th><th>Exit</th><th class="r">Exit</th>${R.mode==="option"?`<th>Option</th><th class="r">Premium in → out</th>`:""}<th class="r">Points</th><th class="r">Candles</th><th>Why</th><th class="r">Lots</th><th class="r">P&L</th><th class="r">Balance</th></tr></thead><tbody>
-   ${T.map(t=>`<tr><td class="${t.side==="LONG"?"pos":"neg"}">${t.side==="LONG"?"Long":"Short"}</td><td>${esc(t.entry_time)}</td><td class="r">${f2(t.entry)}</td><td>${esc(t.exit_time)}</td><td class="r">${f2(t.exit)}</td>${R.mode==="option"?`<td>${esc(t.option)} <span class="soft">${esc(t.expiry)}</span></td><td class="r">${f2(t.prem_in)} → ${f2(t.prem_out)}</td>`:""}<td class="r ${t.points>0?"pos":"neg"}">${t.points>0?"+":""}${t.points}</td><td class="r">${t.bars}</td><td>${esc(t.why)}</td><td class="r">${t.lots??1}</td><td class="r ${t.pnl>=0?"pos":"neg"}">${inr(t.pnl)}</td><td class="r">${t.balance!=null?inr(t.balance):"–"}</td></tr>`).join("")}</tbody></table></div></section>`;
-  return h+fnoHelp();}
+   ${T.map(t=>`<tr><td class="${t.side==="LONG"?"pos":"neg"}">${t.side==="LONG"?"Long":"Short"}</td><td>${esc(t.entry_time)}</td><td class="r">${f2(t.entry)}</td><td>${esc(t.exit_time)}</td><td class="r">${f2(t.exit)}</td>${R.mode==="option"?`<td>${esc(t.option)}${t.delta!=null?` <span class="soft">Δ ${t.delta}</span>`:""} <span class="soft">${esc(t.expiry)}</span></td><td class="r">${f2(t.prem_in)} → ${f2(t.prem_out)}</td>`:""}<td class="r ${t.points>0?"pos":"neg"}">${t.points>0?"+":""}${t.points}</td><td class="r">${t.bars}</td><td>${esc(t.why)}</td><td class="r">${t.lots??1}</td><td class="r ${t.pnl>=0?"pos":"neg"}">${inr(t.pnl)}</td><td class="r">${t.balance!=null?inr(t.balance):"–"}</td></tr>`).join("")}</tbody></table></div></section>`;
+  return h;}
 function fnoHelp(){return `<section class="card"><h2>How the test works (read before trusting a result)</h2><ul style="margin:0 0 0 18px;line-height:1.6">
   <li><strong>MA cross</strong> (SMA or EMA, any lengths) and <strong>MACD</strong> (fast, slow, signal) are both "MAC" options; tick one or both.</li>
   <li><strong>VWAP</strong> resets at each day's open on intraday candles; on daily candles it is a rolling VWAP over the days you set.</li>
@@ -1597,6 +1646,7 @@ main.addEventListener("change",e=>{const y=e.target.closest&&e.target.closest("[
 function absInput(e){const el=e.target.closest&&e.target.closest("[data-absk]");if(!el)return;const k=el.dataset.absk;ABS[k]=el.type==="checkbox"?el.checked:el.value;saveAbs();
   if(e.type==="change"||el.type==="checkbox"||el.tagName==="SELECT"){const id=el.dataset.absk,st=el.selectionStart;render();const again=main.querySelector(`[data-absk="${id}"]`);if(again){again.focus();try{if(st!=null&&again.setSelectionRange)again.setSelectionRange(st,st);}catch(er){}}}}
 main.addEventListener("change",absInput);
+main.addEventListener("change",e=>{const el=e.target.closest&&e.target.closest("[data-macre]");if(!el||!el.form)return;MS.p=macRead(el.form);if(MS.p.instrument!=="NIFTY")MS.p.expiry="monthly";try{localStorage.setItem("mac-p",JSON.stringify(MS.p));}catch(er){}const nm=el.name;render();const a=document.querySelector(`#macF [name="${nm}"]`);if(a)a.focus();});
 main.addEventListener("change",e=>{const el=e.target.closest&&e.target.closest("[data-fnore]");if(!el||!el.form)return;FN.p=fnoRead(el.form);try{localStorage.setItem("fno-p",JSON.stringify(FN.p));}catch(er){}const nm=el.name;render();const a=document.querySelector(`#fnoF [name="${nm}"]`);if(a)a.focus();});
 main.addEventListener("change",e=>{const sel=e.target.closest&&e.target.closest("[data-grstrat]");if(!sel)return;const f=sel.form;for(const k of Object.keys(GR.params)){const el=f.elements[k];if(el)GR.params[k]=el.type==="checkbox"?el.checked:el.value;}GR.params.strategy=sel.value;render();const a=document.querySelector("[data-grstrat]");if(a)a.focus();});$("#fsDlg").addEventListener("change",onRange);
 $("#fsX").addEventListener("click",closeFs);
@@ -1605,6 +1655,8 @@ window.addEventListener("resize",()=>{if(FS&&$("#fsDlg").open){const r=chartSubj
 main.addEventListener("submit",e=>{
   e.preventDefault(); const f=e.target;
   if(f.id==="anaF"){runAnalyze($("#anaQ").value);return;}
+  if(f.id==="macF"){const p=macRead(f);MS.p=p;try{localStorage.setItem("mac-p",JSON.stringify(p));}catch(er){}MS.busy=true;MS.err=null;render();
+    fetch("/api/fno/mac",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(p)}).then(()=>setTimeout(loadMS,2000)).catch(er=>{MS.busy=false;MS.err=String(er);render();});return;}
   if(f.id==="fnoF"){const p=fnoRead(f);FN.p=p;try{localStorage.setItem("fno-p",JSON.stringify(p));}catch(er){}FN.busy=true;FN.err=null;render();
     fetch("/api/fno/backtest",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(p)}).then(()=>setTimeout(loadFN,2000)).catch(er=>{FN.busy=false;FN.err=String(er);render();});return;}
   if(f.id==="absRpF"){const p=Object.assign({},AR.p);for(const k of Object.keys(AR.p)){const el=f.elements[k];if(!el)continue;p[k]=el.type==="checkbox"?el.checked:el.value;}
@@ -1654,6 +1706,8 @@ main.addEventListener("click",async e=>{
   if(t.closest&&t.closest("[data-giapply]")){giApply();return;}
   if(t.closest&&t.closest("[data-giclear]")){GI.data=null;GI.rows=[];GI.err=null;render();return;}
   if(t.closest&&t.closest("[data-giundo]")){try{const b=localStorage.getItem("book-before-groww");if(b){B=JSON.parse(b);localStorage.removeItem("book-before-groww");persist();GI.done="Last Groww import undone.";render();}}catch(e){}return;}
+  const fs=t.closest&&t.closest("[data-fnosub]");if(fs){FNO_SUB=fs.dataset.fnosub;try{localStorage.setItem("fno-sub",FNO_SUB);}catch(er){}render();const b=document.querySelector(`[data-fnosub="${FNO_SUB}"]`);if(b)b.focus();return;}
+  const mr=t.closest&&t.closest("[data-macreset]");if(mr){try{localStorage.removeItem("mac-p");}catch(er){}MS.p=Object.assign({},MAC_DEF);render();return;}
   const fr=t.closest&&t.closest("[data-fnoreset]");if(fr){try{localStorage.removeItem("fno-p");}catch(er){}FN.p=Object.assign({},FNO_DEF);render();return;}
   const fu=t.closest&&t.closest("[data-fnouse]");if(fu&&FN.res&&FN.res.sweep){const r=FN.res.sweep[+fu.dataset.fnouse];if(r){Object.assign(FN.p,r.params,{sweep:"none"});for(const k of ["ma_fast","ma_slow","macd_fast","macd_slow","macd_signal","rsi_len","roc_len","vwap_days","rsi_long","rsi_short","roc_thr"])if(FN.p[k]!=null)FN.p[k]=String(FN.p[k]);try{localStorage.setItem("fno-p",JSON.stringify(FN.p));}catch(er){}render();const a=document.querySelector("#fnoF [name=instrument]");if(a){a.scrollIntoView({block:"center"});a.focus();}}return;}
   const arr=t.closest&&t.closest("[data-arreset]");if(arr){try{localStorage.removeItem("abs-rp");}catch(er){}Object.assign(AR.p,{years:"",symbols:"",sector:"",risk_pct:2,max_open:5,vol_mult:1.8,wick_min:0.4,close_pos:0.6,max_touches:2,impulse_atr:2,rr:2,max_days:20,max_risk_atr:2.5,stop_pad_atr:0.1,cost_pct:0.15,need_zone:true,need_sweep:false,block_supply:false});render();return;}
